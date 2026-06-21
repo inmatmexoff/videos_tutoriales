@@ -2,10 +2,22 @@
 {
   "placeholderImages": [
     {
-      "id": "api-hero",
-      "description": "Abstract technological background representing API connections",
-      "imageUrl": "https://picsum.photos/seed/api1/1200/600",
-      "imageHint": "network connection"
+      "id": "tutorial-1",
+      "description": "System Dashboard process",
+      "imageUrl": "https://picsum.photos/seed/system1/600/400",
+      "imageHint": "computer dashboard"
+    },
+    {
+      "id": "tutorial-2",
+      "description": "Database management process",
+      "imageUrl": "https://picsum.photos/seed/system2/600/400",
+      "imageHint": "database server"
+    },
+    {
+      "id": "tutorial-3",
+      "description": "User authentication flow",
+      "imageUrl": "https://picsum.photos/seed/system3/600/400",
+      "imageHint": "security lock"
     }
   ]
 }
