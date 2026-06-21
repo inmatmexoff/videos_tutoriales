@@ -1,0 +1,11 @@
+
+{
+  "placeholderImages": [
+    {
+      "id": "api-hero",
+      "description": "Abstract technological background representing API connections",
+      "imageUrl": "https://picsum.photos/seed/api1/1200/600",
+      "imageHint": "network connection"
+    }
+  ]
+}
