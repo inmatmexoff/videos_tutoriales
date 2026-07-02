@@ -154,17 +154,15 @@ export default function TutorialsPage() {
           <ArrowLeft className="mr-2 h-4 w-4" /> Volver al listado
         </Button>
         <div className="max-w-5xl mx-auto space-y-6">
-          <div className="aspect-video bg-black rounded-3xl overflow-hidden flex items-center justify-center relative shadow-2xl ring-1 ring-border">
-            <div className="absolute inset-0 flex flex-col items-center justify-center text-white/50 space-y-4">
-              <Play className="w-20 h-20" />
-              <p className="font-medium">Reproductor Externo Configurado</p>
-              <Button asChild variant="secondary" className="rounded-full">
-                <a href={viewingTutorial.url_video} target="_blank" rel="noopener noreferrer">
-                  <ExternalLink className="mr-2 h-4 w-4" /> Abrir Video Original
-                </a>
-              </Button>
-            </div>
-            <div className="absolute bottom-4 right-4 bg-black/60 backdrop-blur-md px-4 py-1 rounded-full text-white text-sm">
+          <div className="aspect-video bg-black rounded-3xl overflow-hidden relative shadow-2xl ring-1 ring-border group">
+            <video 
+              src={viewingTutorial.url_video} 
+              className="w-full h-full object-contain" 
+              controls 
+              autoPlay 
+              playsInline
+            />
+            <div className="absolute bottom-4 right-4 bg-black/60 backdrop-blur-md px-4 py-1 rounded-full text-white text-sm pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity">
               {viewingTutorial.modulo.categoria.nombre} • {viewingTutorial.modulo.nombre}
             </div>
           </div>
@@ -174,9 +172,16 @@ export default function TutorialsPage() {
                 <h1 className="text-3xl font-bold">{viewingTutorial.titulo}</h1>
                 <p className="text-primary font-medium">{viewingTutorial.modulo.nombre}</p>
               </div>
-              <Badge variant="outline" className="px-4 py-1 text-lg rounded-full">
-                {viewingTutorial.modulo.categoria.nombre}
-              </Badge>
+              <div className="flex gap-2">
+                <Button asChild variant="outline" size="sm" className="rounded-full">
+                  <a href={viewingTutorial.url_video} target="_blank" rel="noopener noreferrer">
+                    <ExternalLink className="mr-2 h-4 w-4" /> Enlace Directo
+                  </a>
+                </Button>
+                <Badge variant="outline" className="px-4 py-1 text-lg rounded-full">
+                  {viewingTutorial.modulo.categoria.nombre}
+                </Badge>
+              </div>
             </div>
             <p className="text-muted-foreground text-lg leading-relaxed">
               {viewingTutorial.descripcion}
