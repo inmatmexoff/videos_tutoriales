@@ -12,7 +12,8 @@ import {
   Upload as UploadIcon,
   Clock,
   Loader2,
-  FileVideo
+  FileVideo,
+  AlertTriangle
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -28,6 +29,7 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { supabasePROD } from "@/lib/supabase";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 interface Categoria {
   id: number;
@@ -38,6 +40,8 @@ interface Modulo {
   id: number;
   nombre: string;
 }
+
+const MAX_FILE_SIZE_MB = 50; // Límite estándar de Supabase Free Tier
 
 export default function UploadTutorialPage() {
   const router = useRouter();
@@ -51,6 +55,7 @@ export default function UploadTutorialPage() {
   const [loadingModules, setLoadingModules] = useState(false);
   
   const [videoFile, setVideoFile] = useState<File | null>(null);
+  const [fileError, setFileError] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     categoriaId: "",
     moduloId: "",
@@ -119,22 +124,25 @@ export default function UploadTutorialPage() {
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
+    setFileError(null);
+
     if (file) {
+      const fileSizeMB = file.size / (1024 * 1024);
+      
+      if (fileSizeMB > MAX_FILE_SIZE_MB) {
+        setFileError(`El archivo es demasiado grande (${fileSizeMB.toFixed(2)}MB). El límite es de ${MAX_FILE_SIZE_MB}MB.`);
+        setVideoFile(null);
+        return;
+      }
+
       setVideoFile(file);
       
-      // Crear un elemento de video temporal para extraer la duración
       const video = document.createElement('video');
       video.preload = 'metadata';
       video.onloadedmetadata = () => {
-        // Liberar la memoria del objeto URL
         window.URL.revokeObjectURL(video.src);
         const duration = Math.floor(video.duration);
         setFormData(prev => ({ ...prev, duracion: duration.toString() }));
-        
-        toast({
-          title: "Duración detectada",
-          description: `El video dura ${Math.floor(duration / 60)}m ${duration % 60}s.`,
-        });
       };
       video.src = URL.createObjectURL(file);
     }
@@ -228,12 +236,20 @@ export default function UploadTutorialPage() {
               <CardTitle className="text-2xl">Subir Video al Sistema</CardTitle>
             </div>
             <CardDescription>
-              El video se organizará automáticamente en carpetas por categoría y módulo en el bucket <strong>videos-tutoriales</strong>.
+              El video se organizará en el bucket <strong>videos-tutoriales</strong>. Límite máximo: {MAX_FILE_SIZE_MB}MB.
             </CardDescription>
           </CardHeader>
           
           <form onSubmit={handleSubmit}>
             <CardContent className="space-y-6">
+              {fileError && (
+                <Alert variant="destructive" className="rounded-xl border-destructive/50">
+                  <AlertTriangle className="h-4 w-4" />
+                  <AlertTitle>Error de archivo</AlertTitle>
+                  <AlertDescription>{fileError}</AlertDescription>
+                </Alert>
+              )}
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-2">
                   <Label htmlFor="categoria">Categoría</Label>
@@ -300,8 +316,7 @@ export default function UploadTutorialPage() {
                       ) : (
                         <>
                           <UploadIcon className="w-8 h-8 mb-2 text-muted-foreground" />
-                          <p className="text-sm text-muted-foreground">Haz clic para seleccionar el video</p>
-                          <p className="text-xs text-muted-foreground">MP4, MOV o WebM</p>
+                          <p className="text-sm text-muted-foreground text-center px-4">Haz clic para seleccionar el video <br/> <span className="text-[10px] uppercase opacity-50">(Máximo {MAX_FILE_SIZE_MB}MB)</span></p>
                         </>
                       )}
                     </div>
@@ -332,7 +347,7 @@ export default function UploadTutorialPage() {
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-2">
-                  <Label htmlFor="duracion">Duración (segundos) - Detectada automáticamente</Label>
+                  <Label htmlFor="duracion">Duración (segundos)</Label>
                   <div className="relative">
                     <Clock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                     <Input 
@@ -366,7 +381,7 @@ export default function UploadTutorialPage() {
               </Button>
               <Button 
                 type="submit" 
-                disabled={loading}
+                disabled={loading || !!fileError || !videoFile}
                 className="rounded-xl px-8 shadow-lg shadow-primary/20"
               >
                 {loading ? (
