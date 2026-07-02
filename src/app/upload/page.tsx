@@ -130,7 +130,7 @@ function UploadContent() {
     if (file) {
       const fileSizeMB = file.size / (1024 * 1024);
       if (fileSizeMB > MAX_FILE_SIZE_MB) {
-        setFileError(`Límite: ${MAX_FILE_SIZE_MB}MB.`);
+        setFileError(`El archivo es demasiado grande. Límite: ${MAX_FILE_SIZE_MB}MB.`);
         setVideoFile(null);
         return;
       }
@@ -148,7 +148,7 @@ function UploadContent() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.moduloId || !formData.titulo || !videoFile) {
-      toast({ variant: "destructive", title: "Campos requeridos", description: "Completa el formulario." });
+      toast({ variant: "destructive", title: "Campos requeridos", description: "Por favor completa el formulario y selecciona un video." });
       return;
     }
 
@@ -170,11 +170,12 @@ function UploadContent() {
         descripcion: formData.descripcion,
         url_video: publicUrl,
         miniatura_url: formData.miniaturaUrl || `https://picsum.photos/seed/${Math.random()}/600/400`,
-        duracion_segundos: parseInt(formData.duracion) || 0
+        duracion_segundos: parseInt(formData.duracion) || 0,
+        orden: 0
       }]);
 
       if (dbError) throw dbError;
-      toast({ title: "¡Éxito!", description: "Video registrado." });
+      toast({ title: "¡Éxito!", description: "El video ha sido registrado correctamente." });
       router.push('/');
     } catch (error: any) {
       toast({ variant: "destructive", title: "Error", description: error.message });
@@ -189,49 +190,144 @@ function UploadContent() {
         <Button variant="ghost" onClick={() => router.back()} className="rounded-full">
           <ArrowLeft className="mr-2 h-4 w-4" /> Volver
         </Button>
+
         <Card className="border-none shadow-xl bg-card/50 backdrop-blur-sm">
-          <CardHeader><CardTitle>Subir Nuevo Proceso</CardTitle></CardHeader>
+          <CardHeader>
+            <div className="flex items-center gap-3 mb-2">
+              <div className="p-2 bg-primary/10 rounded-lg">
+                <Video className="w-6 h-6 text-primary" />
+              </div>
+              <CardTitle className="text-2xl">Subir Nuevo Proceso</CardTitle>
+            </div>
+            <CardDescription>Completa la información para registrar el tutorial en el sistema.</CardDescription>
+          </CardHeader>
+          
           <form onSubmit={handleSubmit}>
             <CardContent className="space-y-6">
-              {fileError && <Alert variant="destructive"><AlertTriangle className="h-4 w-4" /><AlertDescription>{fileError}</AlertDescription></Alert>}
+              {fileError && (
+                <Alert variant="destructive">
+                  <AlertTriangle className="h-4 w-4" />
+                  <AlertTitle>Error de archivo</AlertTitle>
+                  <AlertDescription>{fileError}</AlertDescription>
+                </Alert>
+              )}
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-2">
                   <Label>Categoría</Label>
                   <Select value={formData.categoriaId} onValueChange={v => setFormData(prev => ({ ...prev, categoriaId: v }))}>
-                    <SelectTrigger className="rounded-xl"><SelectValue placeholder="Categoría" /></SelectTrigger>
-                    <SelectContent>{categories.map(c => <SelectItem key={c.id} value={c.id.toString()}>{c.nombre}</SelectItem>)}</SelectContent>
+                    <SelectTrigger className="rounded-xl">
+                      <SelectValue placeholder="Selecciona categoría" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {categories.map(c => <SelectItem key={c.id} value={c.id.toString()}>{c.nombre}</SelectItem>)}
+                    </SelectContent>
                   </Select>
                 </div>
                 <div className="space-y-2">
                   <Label>Módulo</Label>
                   <Select value={formData.moduloId} onValueChange={v => setFormData(prev => ({ ...prev, moduloId: v }))} disabled={!formData.categoriaId}>
-                    <SelectTrigger className="rounded-xl"><SelectValue placeholder="Módulo" /></SelectTrigger>
-                    <SelectContent>{modules.map(m => <SelectItem key={m.id} value={m.id.toString()}>{m.nombre}</SelectItem>)}</SelectContent>
+                    <SelectTrigger className="rounded-xl">
+                      <SelectValue placeholder={loadingModules ? "Cargando..." : "Selecciona módulo"} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {modules.map(m => <SelectItem key={m.id} value={m.id.toString()}>{m.nombre}</SelectItem>)}
+                    </SelectContent>
                   </Select>
                 </div>
               </div>
+
               <div className="space-y-2">
-                <Label>Título</Label>
-                <Input className="rounded-xl" value={formData.titulo} onChange={e => setFormData(prev => ({ ...prev, titulo: e.target.value }))} required />
+                <Label htmlFor="titulo">Título del Proceso</Label>
+                <div className="relative">
+                  <Layout className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input 
+                    id="titulo"
+                    className="pl-10 rounded-xl"
+                    placeholder="Ej: Reclutamiento de Personal"
+                    value={formData.titulo}
+                    onChange={e => setFormData(prev => ({ ...prev, titulo: e.target.value }))}
+                    required
+                  />
+                </div>
               </div>
+
               <div className="space-y-2">
-                <Label>Archivo</Label>
+                <Label>Archivo de Video (Máx 50MB)</Label>
                 <div className="flex items-center justify-center w-full h-32 border-2 border-dashed rounded-xl cursor-pointer bg-muted/30 hover:bg-muted/50 transition-all relative">
-                  <input type="file" accept="video/*" className="absolute inset-0 opacity-0 cursor-pointer" onChange={handleFileChange} />
+                  <input 
+                    type="file" 
+                    accept="video/*" 
+                    className="absolute inset-0 opacity-0 cursor-pointer"
+                    onChange={handleFileChange}
+                  />
                   <div className="text-center">
-                    {videoFile ? <p className="text-sm font-medium">{videoFile.name}</p> : <p className="text-sm text-muted-foreground">Selecciona el video</p>}
+                    <div className="flex justify-center mb-2">
+                      <UploadIcon className={`w-8 h-8 ${videoFile ? 'text-primary' : 'text-muted-foreground'}`} />
+                    </div>
+                    {videoFile ? (
+                      <div className="flex flex-col gap-1">
+                        <p className="text-sm font-medium text-foreground">{videoFile.name}</p>
+                        <p className="text-xs text-muted-foreground">{(videoFile.size / (1024 * 1024)).toFixed(2)} MB</p>
+                      </div>
+                    ) : (
+                      <p className="text-sm text-muted-foreground">Haz clic o arrastra el video aquí</p>
+                    )}
                   </div>
                 </div>
               </div>
-              <div className="space-y-2"><Label>Descripción</Label><Textarea className="rounded-xl" value={formData.descripcion} onChange={e => setFormData(prev => ({ ...prev, descripcion: e.target.value }))} /></div>
-              <div className="grid grid-cols-2 gap-6">
-                <div className="space-y-2"><Label>Duración (s)</Label><Input readOnly className="rounded-xl bg-muted/50" value={formData.duracion} /></div>
-                <div className="space-y-2"><Label>URL Miniatura</Label><Input className="rounded-xl" value={formData.miniaturaUrl} onChange={e => setFormData(prev => ({ ...prev, miniaturaUrl: e.target.value }))} /></div>
+
+              <div className="space-y-2">
+                <Label htmlFor="descripcion">Descripción</Label>
+                <div className="relative">
+                  <FileText className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                  <Textarea 
+                    id="descripcion"
+                    className="pl-10 rounded-xl min-h-[100px]"
+                    placeholder="Detalles sobre este proceso..."
+                    value={formData.descripcion}
+                    onChange={e => setFormData(prev => ({ ...prev, descripcion: e.target.value }))}
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-2">
+                  <Label htmlFor="duracion">Duración (segundos)</Label>
+                  <div className="relative">
+                    <Clock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input 
+                      id="duracion"
+                      readOnly
+                      className="pl-10 rounded-xl bg-muted/50 cursor-not-allowed"
+                      value={formData.duracion}
+                      placeholder="Auto-detectada"
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="miniatura">URL de Miniatura (Opcional)</Label>
+                  <Input 
+                    id="miniatura"
+                    className="rounded-xl"
+                    placeholder="https://ejemplo.com/imagen.jpg"
+                    value={formData.miniaturaUrl}
+                    onChange={e => setFormData(prev => ({ ...prev, miniaturaUrl: e.target.value }))}
+                  />
+                </div>
               </div>
             </CardContent>
+            
             <CardFooter className="flex justify-end gap-3 pt-6 border-t">
+              <Button type="button" variant="ghost" onClick={() => router.back()} className="rounded-xl">
+                Cancelar
+              </Button>
               <Button type="submit" disabled={loading || !!fileError || !videoFile} className="rounded-xl px-8 shadow-lg shadow-primary/20">
-                {loading ? <Loader2 className="animate-spin mr-2" /> : <Save className="mr-2 h-4 w-4" />} Guardar
+                {loading ? (
+                  <><Loader2 className="animate-spin mr-2 h-4 w-4" /> Subiendo...</>
+                ) : (
+                  <><Save className="mr-2 h-4 w-4" /> Guardar Proceso</>
+                )}
               </Button>
             </CardFooter>
           </form>

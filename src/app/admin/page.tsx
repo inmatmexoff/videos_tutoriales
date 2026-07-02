@@ -39,8 +39,8 @@ function AdminContent() {
   const [loading, setLoading] = useState(false);
   const [categories, setCategories] = useState<any[]>([]);
   
-  const [catData, setCatData] = useState({ nombre: "", descripcion: "", orden: "0" });
-  const [modData, setModData] = useState({ categoriaId: "", nombre: "", descripcion: "", orden: "0" });
+  const [catData, setCatData] = useState({ nombre: "", descripcion: "" });
+  const [modData, setModData] = useState({ categoriaId: "", nombre: "", descripcion: "" });
 
   const fetchCategories = async () => {
     const { data } = await supabasePROD
@@ -64,12 +64,12 @@ function AdminContent() {
         .insert([{
           nombre: catData.nombre,
           descripcion: catData.descripcion,
-          orden: parseInt(catData.orden) || 0
+          orden: 0 // Asignación automática
         }]);
 
       if (error) throw error;
       toast({ title: "Categoría creada", description: `Se ha registrado "${catData.nombre}"` });
-      setCatData({ nombre: "", descripcion: "", orden: "0" });
+      setCatData({ nombre: "", descripcion: "" });
       fetchCategories();
     } catch (error: any) {
       toast({ variant: "destructive", title: "Error", description: error.message });
@@ -89,12 +89,12 @@ function AdminContent() {
           categoria_id: parseInt(modData.categoriaId),
           nombre: modData.nombre,
           descripcion: modData.descripcion,
-          orden: parseInt(modData.orden) || 0
+          orden: 0 // Asignación automática
         }]);
 
       if (error) throw error;
       toast({ title: "Módulo creado", description: `Se ha registrado "${modData.nombre}"` });
-      setModData({ categoriaId: modData.categoriaId, nombre: "", descripcion: "", orden: "0" });
+      setModData({ categoriaId: modData.categoriaId, nombre: "", descripcion: "" });
     } catch (error: any) {
       toast({ variant: "destructive", title: "Error", description: error.message });
     } finally {
@@ -143,27 +143,15 @@ function AdminContent() {
                       className="rounded-xl"
                     />
                   </div>
-                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                    <div className="md:col-span-3 space-y-2">
-                      <Label htmlFor="cat-desc">Descripción (Opcional)</Label>
-                      <Input 
-                        id="cat-desc" 
-                        placeholder="Breve detalle..." 
-                        value={catData.descripcion}
-                        onChange={e => setCatData(prev => ({ ...prev, descripcion: e.target.value }))}
-                        className="rounded-xl"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="cat-orden">Orden</Label>
-                      <Input 
-                        id="cat-orden" 
-                        type="number"
-                        value={catData.orden}
-                        onChange={e => setCatData(prev => ({ ...prev, orden: e.target.value }))}
-                        className="rounded-xl"
-                      />
-                    </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="cat-desc">Descripción (Opcional)</Label>
+                    <Input 
+                      id="cat-desc" 
+                      placeholder="Breve detalle..." 
+                      value={catData.descripcion}
+                      onChange={e => setCatData(prev => ({ ...prev, descripcion: e.target.value }))}
+                      className="rounded-xl"
+                    />
                   </div>
                 </CardContent>
                 <CardFooter>
@@ -213,27 +201,15 @@ function AdminContent() {
                       className="rounded-xl"
                     />
                   </div>
-                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                    <div className="md:col-span-3 space-y-2">
-                      <Label htmlFor="mod-desc">Descripción</Label>
-                      <Input 
-                        id="mod-desc" 
-                        placeholder="Propósito del módulo..." 
-                        value={modData.descripcion}
-                        onChange={e => setModData(prev => ({ ...prev, descripcion: e.target.value }))}
-                        className="rounded-xl"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="mod-orden">Orden</Label>
-                      <Input 
-                        id="mod-orden" 
-                        type="number"
-                        value={modData.orden}
-                        onChange={e => setModData(prev => ({ ...prev, orden: e.target.value }))}
-                        className="rounded-xl"
-                      />
-                    </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="mod-desc">Descripción</Label>
+                    <Input 
+                      id="mod-desc" 
+                      placeholder="Propósito del módulo..." 
+                      value={modData.descripcion}
+                      onChange={e => setModData(prev => ({ ...prev, descripcion: e.target.value }))}
+                      className="rounded-xl"
+                    />
                   </div>
                 </CardContent>
                 <CardFooter>
