@@ -13,7 +13,8 @@ import {
   Clock,
   Loader2,
   FileVideo,
-  AlertTriangle
+  AlertTriangle,
+  ImageIcon
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -42,7 +43,7 @@ interface Modulo {
   nombre: string;
 }
 
-const MAX_FILE_SIZE_MB = 50;
+const MAX_FILE_SIZE_MB = 100;
 
 export default function UploadTutorialPage() {
   return (
@@ -64,6 +65,7 @@ function UploadContent() {
   const [loadingModules, setLoadingModules] = useState(false);
   
   const [videoFile, setVideoFile] = useState<File | null>(null);
+  const [imageFile, setImageFile] = useState<File | null>(null);
   const [fileError, setFileError] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     categoriaId: "",
@@ -71,7 +73,6 @@ function UploadContent() {
     titulo: "",
     descripcion: "",
     duracion: "",
-    miniaturaUrl: ""
   });
 
   useEffect(() => {
@@ -82,7 +83,7 @@ function UploadContent() {
           .from('categorias_tutoriales')
           .select('id, nombre')
           .eq('activo', true)
-          .order('orden', { ascending: true });
+          .order('nombre', { ascending: true });
 
         if (error) throw error;
         setCategories(data || []);
@@ -109,7 +110,7 @@ function UploadContent() {
           .select('id, nombre')
           .eq('categoria_id', formData.categoriaId)
           .eq('activo', true)
-          .order('orden', { ascending: true });
+          .order('nombre', { ascending: true });
 
         if (error) throw error;
         setModules(data || []);
@@ -123,14 +124,14 @@ function UploadContent() {
     fetchModules();
   }, [formData.categoriaId, toast]);
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleVideoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     setFileError(null);
 
     if (file) {
       const fileSizeMB = file.size / (1024 * 1024);
       if (fileSizeMB > MAX_FILE_SIZE_MB) {
-        setFileError(`El archivo es demasiado grande. Límite: ${MAX_FILE_SIZE_MB}MB.`);
+        setFileError(`El video es demasiado grande. Límite: ${MAX_FILE_SIZE_MB}MB.`);
         setVideoFile(null);
         return;
       }
@@ -145,6 +146,13 @@ function UploadContent() {
     }
   };
 
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setImageFile(file);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.moduloId || !formData.titulo || !videoFile) {
@@ -156,20 +164,36 @@ function UploadContent() {
     try {
       const cat = categories.find(c => c.id.toString() === formData.categoriaId);
       const mod = modules.find(m => m.id.toString() === formData.moduloId);
-      const fileName = `${Date.now()}_${videoFile.name.replace(/\s/g, '_')}`;
-      const filePath = `${cat?.nombre}/${mod?.nombre}/${fileName}`;
+      
+      const cleanCat = cat?.nombre.replace(/\s/g, '_') || 'General';
+      const cleanMod = mod?.nombre.replace(/\s/g, '_') || 'Sin_Modulo';
+      const timestamp = Date.now();
 
-      const { error: uploadError } = await supabasePROD.storage.from('videos-tutoriales').upload(filePath, videoFile);
-      if (uploadError) throw uploadError;
+      // 1. Subir Video
+      const videoFileName = `${timestamp}_${videoFile.name.replace(/\s/g, '_')}`;
+      const videoPath = `${cleanCat}/${cleanMod}/videos/${videoFileName}`;
+      const { error: videoError } = await supabasePROD.storage.from('videos-tutoriales').upload(videoPath, videoFile);
+      if (videoError) throw videoError;
+      const { data: { publicUrl: videoUrl } } = supabasePROD.storage.from('videos-tutoriales').getPublicUrl(videoPath);
 
-      const { data: { publicUrl } } = supabasePROD.storage.from('videos-tutoriales').getPublicUrl(filePath);
+      // 2. Subir Miniatura (si existe)
+      let miniaturaUrl = `https://picsum.photos/seed/${Math.random()}/600/400`;
+      if (imageFile) {
+        const imgFileName = `${timestamp}_${imageFile.name.replace(/\s/g, '_')}`;
+        const imgPath = `${cleanCat}/${cleanMod}/thumbnails/${imgFileName}`;
+        const { error: imgError } = await supabasePROD.storage.from('videos-tutoriales').upload(imgPath, imageFile);
+        if (imgError) throw imgError;
+        const { data: { publicUrl: imgUrl } } = supabasePROD.storage.from('videos-tutoriales').getPublicUrl(imgPath);
+        miniaturaUrl = imgUrl;
+      }
 
+      // 3. Registrar en BD
       const { error: dbError } = await supabasePROD.from('tutoriales').insert([{
         modulo_id: parseInt(formData.moduloId),
         titulo: formData.titulo,
         descripcion: formData.descripcion,
-        url_video: publicUrl,
-        miniatura_url: formData.miniaturaUrl || `https://picsum.photos/seed/${Math.random()}/600/400`,
+        url_video: videoUrl,
+        miniatura_url: miniaturaUrl,
         duracion_segundos: parseInt(formData.duracion) || 0,
         orden: 0
       }]);
@@ -199,7 +223,7 @@ function UploadContent() {
               </div>
               <CardTitle className="text-2xl">Subir Nuevo Proceso</CardTitle>
             </div>
-            <CardDescription>Completa la información para registrar el tutorial en el sistema.</CardDescription>
+            <CardDescription>Completa la información para registrar el tutorial.</CardDescription>
           </CardHeader>
           
           <form onSubmit={handleSubmit}>
@@ -252,27 +276,26 @@ function UploadContent() {
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <Label>Archivo de Video (Máx 50MB)</Label>
-                <div className="flex items-center justify-center w-full h-32 border-2 border-dashed rounded-xl cursor-pointer bg-muted/30 hover:bg-muted/50 transition-all relative">
-                  <input 
-                    type="file" 
-                    accept="video/*" 
-                    className="absolute inset-0 opacity-0 cursor-pointer"
-                    onChange={handleFileChange}
-                  />
-                  <div className="text-center">
-                    <div className="flex justify-center mb-2">
-                      <UploadIcon className={`w-8 h-8 ${videoFile ? 'text-primary' : 'text-muted-foreground'}`} />
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-2">
+                  <Label>Archivo de Video</Label>
+                  <div className="flex items-center justify-center w-full h-32 border-2 border-dashed rounded-xl cursor-pointer bg-muted/30 hover:bg-muted/50 transition-all relative">
+                    <input type="file" accept="video/*" className="absolute inset-0 opacity-0 cursor-pointer" onChange={handleVideoChange} />
+                    <div className="text-center px-2">
+                      <FileVideo className={`mx-auto mb-2 ${videoFile ? 'text-primary' : 'text-muted-foreground'}`} />
+                      <p className="text-xs truncate max-w-[200px]">{videoFile ? videoFile.name : "Subir Video"}</p>
                     </div>
-                    {videoFile ? (
-                      <div className="flex flex-col gap-1">
-                        <p className="text-sm font-medium text-foreground">{videoFile.name}</p>
-                        <p className="text-xs text-muted-foreground">{(videoFile.size / (1024 * 1024)).toFixed(2)} MB</p>
-                      </div>
-                    ) : (
-                      <p className="text-sm text-muted-foreground">Haz clic o arrastra el video aquí</p>
-                    )}
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Miniatura (Imagen)</Label>
+                  <div className="flex items-center justify-center w-full h-32 border-2 border-dashed rounded-xl cursor-pointer bg-muted/30 hover:bg-muted/50 transition-all relative">
+                    <input type="file" accept="image/*" className="absolute inset-0 opacity-0 cursor-pointer" onChange={handleImageChange} />
+                    <div className="text-center px-2">
+                      <ImageIcon className={`mx-auto mb-2 ${imageFile ? 'text-primary' : 'text-muted-foreground'}`} />
+                      <p className="text-xs truncate max-w-[200px]">{imageFile ? imageFile.name : "Subir Imagen"}</p>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -291,28 +314,16 @@ function UploadContent() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="space-y-2">
-                  <Label htmlFor="duracion">Duración (segundos)</Label>
-                  <div className="relative">
-                    <Clock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    <Input 
-                      id="duracion"
-                      readOnly
-                      className="pl-10 rounded-xl bg-muted/50 cursor-not-allowed"
-                      value={formData.duracion}
-                      placeholder="Auto-detectada"
-                    />
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="miniatura">URL de Miniatura (Opcional)</Label>
+              <div className="space-y-2">
+                <Label htmlFor="duracion">Duración (segundos)</Label>
+                <div className="relative">
+                  <Clock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <Input 
-                    id="miniatura"
-                    className="rounded-xl"
-                    placeholder="https://ejemplo.com/imagen.jpg"
-                    value={formData.miniaturaUrl}
-                    onChange={e => setFormData(prev => ({ ...prev, miniaturaUrl: e.target.value }))}
+                    id="duracion"
+                    readOnly
+                    className="pl-10 rounded-xl bg-muted/50 cursor-not-allowed"
+                    value={formData.duracion}
+                    placeholder="Auto-detectada"
                   />
                 </div>
               </div>
@@ -322,9 +333,9 @@ function UploadContent() {
               <Button type="button" variant="ghost" onClick={() => router.back()} className="rounded-xl">
                 Cancelar
               </Button>
-              <Button type="submit" disabled={loading || !!fileError || !videoFile} className="rounded-xl px-8 shadow-lg shadow-primary/20">
+              <Button type="submit" disabled={loading || !videoFile} className="rounded-xl px-8 shadow-lg shadow-primary/20">
                 {loading ? (
-                  <><Loader2 className="animate-spin mr-2 h-4 w-4" /> Subiendo...</>
+                  <><Loader2 className="animate-spin mr-2 h-4 w-4" /> Guardando...</>
                 ) : (
                   <><Save className="mr-2 h-4 w-4" /> Guardar Proceso</>
                 )}
