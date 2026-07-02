@@ -13,10 +13,10 @@ import {
   MoreVertical,
   ArrowLeft,
   Loader2,
-  ExternalLink,
   Info,
   Settings,
-  Edit2
+  Edit2,
+  Layers
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
@@ -28,6 +28,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger 
 } from "@/components/ui/dropdown-menu";
+import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
 import { supabasePROD } from "@/lib/supabase";
 
@@ -108,6 +109,16 @@ export default function TutorialsPage() {
     });
   }, [tutorials, search, selectedCategory]);
 
+  const groupedTutorials = useMemo(() => {
+    const groups: Record<string, Tutorial[]> = {};
+    filteredTutorials.forEach(t => {
+      const moduleName = t.modulo?.nombre || "General";
+      if (!groups[moduleName]) groups[moduleName] = [];
+      groups[moduleName].push(t);
+    });
+    return groups;
+  }, [filteredTutorials]);
+
   const handleDelete = async (id: number) => {
     try {
       const { error } = await supabasePROD.from('tutoriales').update({ activo: false }).eq('id', id);
@@ -186,12 +197,12 @@ export default function TutorialsPage() {
       </div>
 
       <main className="container mx-auto px-6 py-8 flex-1">
-        <div className="mb-8 space-y-1">
+        <div className="mb-12 space-y-1">
           <h2 className="text-3xl font-extrabold tracking-tight text-foreground flex items-center gap-3">
             {selectedCategory === "all" ? "Todos los Procesos" : `Procesos de ${selectedCategory}`}
             {!loading && <Badge variant="secondary" className="ml-2 font-mono">{filteredTutorials.length}</Badge>}
           </h2>
-          <p className="text-muted-foreground flex items-center gap-2"><Info className="w-4 h-4" /> Explora las guías del sistema.</p>
+          <p className="text-muted-foreground flex items-center gap-2"><Info className="w-4 h-4" /> Explora las guías del sistema divididas por módulos.</p>
         </div>
 
         {loading ? (
@@ -199,41 +210,63 @@ export default function TutorialsPage() {
         ) : filteredTutorials.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 text-center"><Search className="w-12 h-12 text-muted-foreground mb-4" /><h3 className="text-xl font-semibold">Sin resultados</h3></div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-            {filteredTutorials.map((tutorial) => (
-              <Card key={tutorial.id} className="group overflow-hidden rounded-2xl border-none ring-1 ring-border bg-card/50 hover:ring-primary/50 transition-all duration-300">
-                <div className="relative aspect-video overflow-hidden">
-                  <img src={tutorial.miniatura_url || "https://picsum.photos/seed/placeholder/600/400"} alt="" className="object-cover w-full h-full" />
-                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                    <Button variant="secondary" className="rounded-full h-12 w-12 p-0" onClick={() => setViewingTutorial(tutorial)}><Play className="fill-current" /></Button>
+          <div className="space-y-16">
+            {Object.entries(groupedTutorials).map(([moduleName, moduleTutorials]) => (
+              <div key={moduleName} className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+                <div className="flex items-center gap-4 mb-6">
+                  <div className="bg-primary/10 p-2 rounded-lg">
+                    <Layers className="w-5 h-5 text-primary" />
                   </div>
+                  <h3 className="text-xl font-bold text-foreground/90">{moduleName}</h3>
+                  <Separator className="flex-1" />
+                  <Badge variant="outline" className="font-mono">{moduleTutorials.length}</Badge>
                 </div>
-                <CardHeader className="p-4">
-                  <div className="flex justify-between items-start gap-2">
-                    <div className="flex flex-col gap-1">
-                      <Badge variant="secondary" className="text-[10px] uppercase font-bold w-fit">{tutorial.modulo?.categoria?.nombre}</Badge>
-                      <span className="text-[10px] text-primary font-bold">{tutorial.modulo?.nombre}</span>
-                    </div>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full"><MoreVertical className="h-4 w-4" /></Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => router.push(`/edit/${tutorial.id}`)}>
-                          <Edit2 className="mr-2 h-4 w-4" /> Editar
-                        </DropdownMenuItem>
-                        <DropdownMenuItem className="text-destructive" onClick={() => handleDelete(tutorial.id)}>
-                          <Trash2 className="mr-2 h-4 w-4" /> Eliminar
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </div>
-                  <CardTitle className="text-lg font-bold mt-2 line-clamp-1">{tutorial.titulo}</CardTitle>
-                </CardHeader>
-                <CardFooter className="p-4 pt-0 text-xs text-muted-foreground flex items-center gap-2">
-                   <Clock className="w-3 h-3" /> {formatDuration(tutorial.duracion_segundos)}
-                </CardFooter>
-              </Card>
+                
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                  {moduleTutorials.map((tutorial) => (
+                    <Card key={tutorial.id} className="group overflow-hidden rounded-2xl border-none ring-1 ring-border bg-card/50 hover:ring-primary/50 transition-all duration-300">
+                      <div className="relative aspect-video overflow-hidden">
+                        <img 
+                          src={tutorial.miniatura_url || "https://picsum.photos/seed/placeholder/600/400"} 
+                          alt="" 
+                          className="object-cover w-full h-full group-hover:scale-105 transition-transform duration-500" 
+                        />
+                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                          <Button variant="secondary" className="rounded-full h-12 w-12 p-0 shadow-xl" onClick={() => setViewingTutorial(tutorial)}>
+                            <Play className="fill-current w-5 h-5" />
+                          </Button>
+                        </div>
+                        <div className="absolute bottom-2 right-2 bg-black/70 text-white text-[10px] px-2 py-1 rounded-md backdrop-blur-sm flex items-center gap-1">
+                          <Clock className="w-3 h-3" /> {formatDuration(tutorial.duracion_segundos)}
+                        </div>
+                      </div>
+                      <CardHeader className="p-4">
+                        <div className="flex justify-between items-start gap-2">
+                          <div className="flex flex-col gap-1">
+                            <Badge variant="secondary" className="text-[10px] uppercase font-bold w-fit bg-primary/10 text-primary border-none">{tutorial.modulo?.categoria?.nombre}</Badge>
+                          </div>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full hover:bg-primary/10"><MoreVertical className="h-4 w-4" /></Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="rounded-xl border-none shadow-xl">
+                              <DropdownMenuItem onClick={() => router.push(`/edit/${tutorial.id}`)} className="cursor-pointer rounded-lg">
+                                <Edit2 className="mr-2 h-4 w-4" /> Editar
+                              </DropdownMenuItem>
+                              <DropdownMenuItem className="text-destructive cursor-pointer rounded-lg" onClick={() => handleDelete(tutorial.id)}>
+                                <Trash2 className="mr-2 h-4 w-4" /> Eliminar
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </div>
+                        <CardTitle className="text-lg font-bold mt-2 line-clamp-2 leading-tight group-hover:text-primary transition-colors">
+                          {tutorial.titulo}
+                        </CardTitle>
+                      </CardHeader>
+                    </Card>
+                  ))}
+                </div>
+              </div>
             ))}
           </div>
         )}
