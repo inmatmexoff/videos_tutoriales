@@ -7,14 +7,14 @@ import {
   Plus, 
   Search, 
   Play, 
-  Edit2, 
   Trash2, 
   Video, 
   Clock, 
   MoreVertical,
   ArrowLeft,
   Loader2,
-  ExternalLink
+  ExternalLink,
+  Info
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
@@ -257,6 +257,18 @@ export default function TutorialsPage() {
 
       {/* Main Content */}
       <main className="container mx-auto px-6 py-8 flex-1">
+        {/* Dynamic Title based on Selection */}
+        <div className="mb-8 space-y-1">
+          <h2 className="text-3xl font-extrabold tracking-tight text-foreground flex items-center gap-3">
+            {selectedCategory === "all" ? "Todos los Procesos" : `Procesos de ${selectedCategory}`}
+            {!loading && <Badge variant="secondary" className="ml-2 font-mono">{filteredTutorials.length}</Badge>}
+          </h2>
+          <p className="text-muted-foreground flex items-center gap-2">
+            <Info className="w-4 h-4" />
+            Explora los videotutoriales y guías del sistema para optimizar tu flujo de trabajo.
+          </p>
+        </div>
+
         {loading ? (
           <div className="flex flex-col items-center justify-center py-20 space-y-4">
             <Loader2 className="w-10 h-10 animate-spin text-primary" />
@@ -269,7 +281,7 @@ export default function TutorialsPage() {
             </div>
             <div>
               <h3 className="text-xl font-semibold">No se encontraron videos</h3>
-              <p className="text-muted-foreground">Prueba ajustando los filtros o registra un nuevo video para este módulo.</p>
+              <p className="text-muted-foreground">Prueba ajustando los filtros o registra un nuevo video para esta categoría.</p>
             </div>
           </div>
         ) : (
@@ -278,7 +290,7 @@ export default function TutorialsPage() {
               <Card key={tutorial.id} className="group overflow-hidden rounded-2xl border-none ring-1 ring-border bg-card/50 hover:ring-primary/50 transition-all duration-300 shadow-sm hover:shadow-xl">
                 <div className="relative aspect-video overflow-hidden">
                   <img 
-                    src={tutorial.miniatura_url} 
+                    src={tutorial.miniatura_url || "https://picsum.photos/seed/placeholder/600/400"} 
                     alt={tutorial.titulo}
                     className="object-cover w-full h-full transition-transform duration-500 group-hover:scale-110"
                   />
@@ -300,9 +312,9 @@ export default function TutorialsPage() {
                   <div className="flex justify-between items-start gap-2">
                     <div className="flex flex-col gap-1">
                       <Badge variant="secondary" className="text-[10px] uppercase font-bold tracking-tight w-fit">
-                        {tutorial.modulo.categoria.nombre}
+                        {tutorial.modulo?.categoria?.nombre || "General"}
                       </Badge>
-                      <span className="text-[10px] text-primary font-bold">{tutorial.modulo.nombre}</span>
+                      <span className="text-[10px] text-primary font-bold">{tutorial.modulo?.nombre || "Módulo"}</span>
                     </div>
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
