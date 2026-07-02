@@ -177,8 +177,14 @@ export default function TutorialsPage() {
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input placeholder="Buscar..." className="pl-9 rounded-xl" value={search} onChange={e => setSearch(e.target.value)} />
             </div>
-            <Button variant="outline" size="icon" onClick={() => router.push('/admin')} className="rounded-xl border-primary/20 hover:bg-primary/5">
-              <Settings className="w-4 h-4 text-primary" />
+            <Button 
+              variant="outline" 
+              onClick={() => router.push('/admin')} 
+              className="rounded-xl border-primary/20 hover:bg-primary/5 gap-2 px-4 h-10"
+            >
+              <Layers className="w-4 h-4 text-primary" />
+              <span className="hidden lg:inline font-medium">Gestionar Estructura</span>
+              <span className="lg:hidden font-medium">Estructura</span>
             </Button>
             <Button onClick={() => router.push('/upload')} className="rounded-xl shadow-lg shadow-primary/20">
               <Plus className="mr-2 h-4 w-4" /> Nuevo
