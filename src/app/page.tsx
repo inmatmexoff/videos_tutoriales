@@ -1,7 +1,7 @@
 
 "use client";
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { 
   Plus, 
   Search, 
@@ -14,7 +14,8 @@ import {
   MoreVertical,
   ArrowLeft,
   LayoutGrid,
-  List as ListIcon
+  List as ListIcon,
+  Loader2
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
@@ -45,6 +46,7 @@ import {
   DropdownMenuTrigger 
 } from "@/components/ui/dropdown-menu";
 import { useToast } from "@/hooks/use-toast";
+import { supabasePROD } from "@/lib/supabase";
 
 // Types
 interface Tutorial {
@@ -57,7 +59,10 @@ interface Tutorial {
   thumbnail: string;
 }
 
-const CATEGORIES = ["Seguridad", "Administración", "Finanzas", "Soporte Técnico", "Recursos Humanos"];
+interface Categoria {
+  id?: string | number;
+  nombre: string;
+}
 
 const INITIAL_TUTORIALS: Tutorial[] = [
   {
@@ -91,12 +96,47 @@ const INITIAL_TUTORIALS: Tutorial[] = [
 
 export default function TutorialsPage() {
   const [tutorials, setTutorials] = useState<Tutorial[]>(INITIAL_TUTORIALS);
+  const [categories, setCategories] = useState<string[]>([]);
+  const [loadingCategories, setLoadingCategories] = useState(true);
   const [search, setSearch] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("all");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [currentTutorial, setCurrentTutorial] = useState<Partial<Tutorial> | null>(null);
   const [viewingTutorial, setViewingTutorial] = useState<Tutorial | null>(null);
   const { toast } = useToast();
+
+  // Fetch categories from Supabase
+  useEffect(() => {
+    async function fetchCategories() {
+      try {
+        setLoadingCategories(true);
+        const { data, error } = await supabasePROD
+          .from('categorias_tutoriales')
+          .select('nombre')
+          .order('nombre', { ascending: true });
+
+        if (error) throw error;
+
+        if (data) {
+          const names = data.map((cat: any) => cat.nombre);
+          setCategories(names);
+        }
+      } catch (error: any) {
+        console.error("Error fetching categories:", error.message);
+        toast({
+          variant: "destructive",
+          title: "Error al cargar categorías",
+          description: "No se pudieron obtener las categorías de la base de datos."
+        });
+        // Fallback en caso de error
+        setCategories(["Seguridad", "Administración", "Finanzas", "Soporte Técnico", "Recursos Humanos"]);
+      } finally {
+        setLoadingCategories(false);
+      }
+    }
+
+    fetchCategories();
+  }, [toast]);
 
   const filteredTutorials = useMemo(() => {
     return tutorials.filter(t => {
@@ -134,7 +174,13 @@ export default function TutorialsPage() {
   };
 
   const openAddDialog = () => {
-    setCurrentTutorial({ title: "", description: "", category: "Administración", videoUrl: "", duration: "" });
+    setCurrentTutorial({ 
+      title: "", 
+      description: "", 
+      category: categories.length > 0 ? categories[0] : "", 
+      videoUrl: "", 
+      duration: "" 
+    });
     setIsDialogOpen(true);
   };
 
@@ -208,26 +254,33 @@ export default function TutorialsPage() {
 
       {/* Categories Bar */}
       <div className="border-b bg-muted/20">
-        <div className="container mx-auto px-6 py-2 overflow-x-auto no-scrollbar flex gap-2">
+        <div className="container mx-auto px-6 py-2 overflow-x-auto no-scrollbar flex gap-2 items-center">
           <Button 
             variant={selectedCategory === "all" ? "default" : "ghost"} 
             size="sm" 
-            className="rounded-full"
+            className="rounded-full shrink-0"
             onClick={() => setSelectedCategory("all")}
           >
             Todos
           </Button>
-          {CATEGORIES.map(cat => (
-            <Button 
-              key={cat} 
-              variant={selectedCategory === cat ? "default" : "ghost"} 
-              size="sm" 
-              className="rounded-full"
-              onClick={() => setSelectedCategory(cat)}
-            >
-              {cat}
-            </Button>
-          ))}
+          {loadingCategories ? (
+            <div className="flex items-center gap-2 px-4">
+              <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+              <span className="text-xs text-muted-foreground">Cargando categorías...</span>
+            </div>
+          ) : (
+            categories.map(cat => (
+              <Button 
+                key={cat} 
+                variant={selectedCategory === cat ? "default" : "ghost"} 
+                size="sm" 
+                className="rounded-full shrink-0"
+                onClick={() => setSelectedCategory(cat)}
+              >
+                {cat}
+              </Button>
+            ))
+          )}
         </div>
       </div>
 
@@ -344,7 +397,7 @@ export default function TutorialsPage() {
                       <SelectValue placeholder="Seleccionar" />
                     </SelectTrigger>
                     <SelectContent>
-                      {CATEGORIES.map(cat => <SelectItem key={cat} value={cat}>{cat}</SelectItem>)}
+                      {categories.map(cat => <SelectItem key={cat} value={cat}>{cat}</SelectItem>)}
                     </SelectContent>
                   </Select>
                 </div>
