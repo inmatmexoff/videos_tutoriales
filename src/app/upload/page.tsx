@@ -118,8 +118,25 @@ export default function UploadTutorialPage() {
   }, [formData.categoriaId, toast]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      setVideoFile(e.target.files[0]);
+    const file = e.target.files?.[0];
+    if (file) {
+      setVideoFile(file);
+      
+      // Crear un elemento de video temporal para extraer la duración
+      const video = document.createElement('video');
+      video.preload = 'metadata';
+      video.onloadedmetadata = () => {
+        // Liberar la memoria del objeto URL
+        window.URL.revokeObjectURL(video.src);
+        const duration = Math.floor(video.duration);
+        setFormData(prev => ({ ...prev, duracion: duration.toString() }));
+        
+        toast({
+          title: "Duración detectada",
+          description: `El video dura ${Math.floor(duration / 60)}m ${duration % 60}s.`,
+        });
+      };
+      video.src = URL.createObjectURL(file);
     }
   };
 
@@ -137,20 +154,17 @@ export default function UploadTutorialPage() {
 
     setLoading(true);
     try {
-      // 1. Obtener nombres para la ruta del bucket
       const categoria = categories.find(c => c.id.toString() === formData.categoriaId);
       const modulo = modules.find(m => m.id.toString() === formData.moduloId);
       
       if (!categoria || !modulo) throw new Error("Error al identificar categoría o módulo.");
 
-      // Limpiar nombres para evitar problemas en rutas (reemplazar espacios y caracteres raros)
       const cleanCat = categoria.nombre.trim().replace(/[^a-zA-Z0-9]/g, '_');
       const cleanMod = modulo.nombre.trim().replace(/[^a-zA-Z0-9]/g, '_');
       const fileName = `${Date.now()}_${videoFile.name.replace(/\s/g, '_')}`;
       
       const filePath = `${cleanCat}/${cleanMod}/${fileName}`;
 
-      // 2. Subir al Storage
       const { data: uploadData, error: uploadError } = await supabasePROD
         .storage
         .from('videos-tutoriales')
@@ -161,13 +175,11 @@ export default function UploadTutorialPage() {
 
       if (uploadError) throw uploadError;
 
-      // 3. Obtener URL pública
       const { data: { publicUrl } } = supabasePROD
         .storage
         .from('videos-tutoriales')
         .getPublicUrl(filePath);
 
-      // 4. Guardar en base de datos
       const { error: dbError } = await supabasePROD
         .from('tutoriales')
         .insert([{
@@ -274,7 +286,6 @@ export default function UploadTutorialPage() {
                 </div>
               </div>
 
-              {/* Selector de Archivo de Video */}
               <div className="space-y-2">
                 <Label htmlFor="video-file">Archivo de Video</Label>
                 <div className="flex items-center justify-center w-full">
@@ -321,16 +332,17 @@ export default function UploadTutorialPage() {
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-2">
-                  <Label htmlFor="duracion">Duración aprox. (segundos)</Label>
+                  <Label htmlFor="duracion">Duración (segundos) - Detectada automáticamente</Label>
                   <div className="relative">
                     <Clock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                     <Input 
                       id="duracion"
                       type="number"
-                      className="pl-10 rounded-xl"
-                      placeholder="Ej: 120"
+                      className="pl-10 rounded-xl bg-muted/50"
+                      placeholder="0"
                       value={formData.duracion}
                       onChange={e => setFormData(prev => ({ ...prev, duracion: e.target.value }))}
+                      readOnly
                     />
                   </div>
                 </div>
