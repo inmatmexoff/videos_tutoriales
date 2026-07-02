@@ -9,10 +9,10 @@ import {
   Video, 
   Layout, 
   FileText, 
-  Link as LinkIcon,
+  Upload as UploadIcon,
   Clock,
   Loader2,
-  CheckCircle2
+  FileVideo
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -43,27 +43,23 @@ export default function UploadTutorialPage() {
   const router = useRouter();
   const { toast } = useToast();
   
-  // States para combos
   const [categories, setCategories] = useState<Categoria[]>([]);
   const [modules, setModules] = useState<Modulo[]>([]);
   
-  // States de carga
   const [loading, setLoading] = useState(false);
   const [loadingCategories, setLoadingCategories] = useState(true);
   const [loadingModules, setLoadingModules] = useState(false);
   
-  // Form State
+  const [videoFile, setVideoFile] = useState<File | null>(null);
   const [formData, setFormData] = useState({
     categoriaId: "",
     moduloId: "",
     titulo: "",
     descripcion: "",
-    urlVideo: "",
     duracion: "",
     miniaturaUrl: ""
   });
 
-  // Cargar categorías iniciales
   useEffect(() => {
     async function fetchCategories() {
       try {
@@ -89,7 +85,6 @@ export default function UploadTutorialPage() {
     fetchCategories();
   }, [toast]);
 
-  // Cargar módulos cuando cambia la categoría
   useEffect(() => {
     async function fetchModules() {
       if (!formData.categoriaId) {
@@ -108,13 +103,12 @@ export default function UploadTutorialPage() {
 
         if (error) throw error;
         setModules(data || []);
-        // Reset modulo selection if current is not in new list
         setFormData(prev => ({ ...prev, moduloId: "" }));
       } catch (error: any) {
         toast({
           variant: "destructive",
           title: "Error",
-          description: "No se pudieron cargar los módulos de esta categoría."
+          description: "No se pudieron cargar los módulos."
         });
       } finally {
         setLoadingModules(false);
@@ -123,44 +117,82 @@ export default function UploadTutorialPage() {
     fetchModules();
   }, [formData.categoriaId, toast]);
 
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      setVideoFile(e.target.files[0]);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.moduloId || !formData.titulo || !formData.urlVideo) {
+    
+    if (!formData.moduloId || !formData.titulo || !videoFile) {
       toast({
         variant: "destructive",
         title: "Campos requeridos",
-        description: "Por favor completa el módulo, título y URL del video."
+        description: "Por favor selecciona un módulo, título y el archivo de video."
       });
       return;
     }
 
     setLoading(true);
     try {
-      const { error } = await supabasePROD
+      // 1. Obtener nombres para la ruta del bucket
+      const categoria = categories.find(c => c.id.toString() === formData.categoriaId);
+      const modulo = modules.find(m => m.id.toString() === formData.moduloId);
+      
+      if (!categoria || !modulo) throw new Error("Error al identificar categoría o módulo.");
+
+      // Limpiar nombres para evitar problemas en rutas (reemplazar espacios y caracteres raros)
+      const cleanCat = categoria.nombre.trim().replace(/[^a-zA-Z0-9]/g, '_');
+      const cleanMod = modulo.nombre.trim().replace(/[^a-zA-Z0-9]/g, '_');
+      const fileName = `${Date.now()}_${videoFile.name.replace(/\s/g, '_')}`;
+      
+      const filePath = `${cleanCat}/${cleanMod}/${fileName}`;
+
+      // 2. Subir al Storage
+      const { data: uploadData, error: uploadError } = await supabasePROD
+        .storage
+        .from('videos-tutoriales')
+        .upload(filePath, videoFile, {
+          cacheControl: '3600',
+          upsert: false
+        });
+
+      if (uploadError) throw uploadError;
+
+      // 3. Obtener URL pública
+      const { data: { publicUrl } } = supabasePROD
+        .storage
+        .from('videos-tutoriales')
+        .getPublicUrl(filePath);
+
+      // 4. Guardar en base de datos
+      const { error: dbError } = await supabasePROD
         .from('tutoriales')
         .insert([{
           modulo_id: parseInt(formData.moduloId),
           titulo: formData.titulo,
           descripcion: formData.descripcion,
-          url_video: formData.urlVideo,
+          url_video: publicUrl,
           miniatura_url: formData.miniaturaUrl || `https://picsum.photos/seed/${Math.random()}/600/400`,
           duracion_segundos: parseInt(formData.duracion) || 0,
           activo: true,
           es_publico: true
         }]);
 
-      if (error) throw error;
+      if (dbError) throw dbError;
 
       toast({
         title: "¡Éxito!",
-        description: "El tutorial ha sido registrado correctamente.",
+        description: "El video se ha subido y registrado correctamente.",
       });
       
       router.push('/');
     } catch (error: any) {
       toast({
         variant: "destructive",
-        title: "Error al guardar",
+        title: "Error en el proceso",
         description: error.message
       });
     } finally {
@@ -181,19 +213,18 @@ export default function UploadTutorialPage() {
               <div className="p-2 bg-primary/10 rounded-lg">
                 <Video className="w-6 h-6 text-primary" />
               </div>
-              <CardTitle className="text-2xl">Subir Nuevo Tutorial</CardTitle>
+              <CardTitle className="text-2xl">Subir Video al Sistema</CardTitle>
             </div>
             <CardDescription>
-              Registra un nuevo proceso del sistema seleccionando su categoría y módulo correspondiente.
+              El video se organizará automáticamente en carpetas por categoría y módulo en el bucket <strong>videos-tutoriales</strong>.
             </CardDescription>
           </CardHeader>
           
           <form onSubmit={handleSubmit}>
             <CardContent className="space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {/* Categoría */}
                 <div className="space-y-2">
-                  <Label htmlFor="categoria">Categoría del Sistema</Label>
+                  <Label htmlFor="categoria">Categoría</Label>
                   <Select 
                     value={formData.categoriaId} 
                     onValueChange={(v) => setFormData(prev => ({ ...prev, categoriaId: v }))}
@@ -209,9 +240,8 @@ export default function UploadTutorialPage() {
                   </Select>
                 </div>
 
-                {/* Módulo */}
                 <div className="space-y-2">
-                  <Label htmlFor="modulo">Módulo Específico</Label>
+                  <Label htmlFor="modulo">Módulo</Label>
                   <Select 
                     value={formData.moduloId} 
                     onValueChange={(v) => setFormData(prev => ({ ...prev, moduloId: v }))}
@@ -229,15 +259,14 @@ export default function UploadTutorialPage() {
                 </div>
               </div>
 
-              {/* Título */}
               <div className="space-y-2">
-                <Label htmlFor="titulo">Título del Video</Label>
+                <Label htmlFor="titulo">Título del Tutorial</Label>
                 <div className="relative">
                   <Layout className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <Input 
                     id="titulo"
                     className="pl-10 rounded-xl"
-                    placeholder="Ej: Cómo realizar una conciliación bancaria"
+                    placeholder="Ej: Proceso de Apertura de Caja"
                     value={formData.titulo}
                     onChange={e => setFormData(prev => ({ ...prev, titulo: e.target.value }))}
                     required
@@ -245,15 +274,45 @@ export default function UploadTutorialPage() {
                 </div>
               </div>
 
-              {/* Descripción */}
+              {/* Selector de Archivo de Video */}
               <div className="space-y-2">
-                <Label htmlFor="descripcion">Descripción del Proceso</Label>
+                <Label htmlFor="video-file">Archivo de Video</Label>
+                <div className="flex items-center justify-center w-full">
+                  <label htmlFor="video-file" className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed rounded-xl cursor-pointer bg-muted/30 hover:bg-muted/50 border-muted-foreground/20 transition-all">
+                    <div className="flex flex-col items-center justify-center pt-5 pb-6">
+                      {videoFile ? (
+                        <>
+                          <FileVideo className="w-8 h-8 mb-2 text-primary" />
+                          <p className="text-sm font-medium text-foreground">{videoFile.name}</p>
+                          <p className="text-xs text-muted-foreground">{(videoFile.size / (1024 * 1024)).toFixed(2)} MB</p>
+                        </>
+                      ) : (
+                        <>
+                          <UploadIcon className="w-8 h-8 mb-2 text-muted-foreground" />
+                          <p className="text-sm text-muted-foreground">Haz clic para seleccionar el video</p>
+                          <p className="text-xs text-muted-foreground">MP4, MOV o WebM</p>
+                        </>
+                      )}
+                    </div>
+                    <input 
+                      id="video-file" 
+                      type="file" 
+                      accept="video/*" 
+                      className="hidden" 
+                      onChange={handleFileChange}
+                    />
+                  </label>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="descripcion">Descripción</Label>
                 <div className="relative">
                   <FileText className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                   <Textarea 
                     id="descripcion"
-                    className="pl-10 rounded-xl min-h-[120px]"
-                    placeholder="Describe los pasos clave que se muestran en el video..."
+                    className="pl-10 rounded-xl min-h-[100px]"
+                    placeholder="Describe los puntos clave del tutorial..."
                     value={formData.descripcion}
                     onChange={e => setFormData(prev => ({ ...prev, descripcion: e.target.value }))}
                   />
@@ -261,36 +320,30 @@ export default function UploadTutorialPage() {
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {/* URL Video */}
                 <div className="space-y-2">
-                  <Label htmlFor="url">URL del Video</Label>
-                  <div className="relative">
-                    <LinkIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    <Input 
-                      id="url"
-                      className="pl-10 rounded-xl"
-                      placeholder="https://youtube.com/..."
-                      value={formData.urlVideo}
-                      onChange={e => setFormData(prev => ({ ...prev, urlVideo: e.target.value }))}
-                      required
-                    />
-                  </div>
-                </div>
-
-                {/* Duración */}
-                <div className="space-y-2">
-                  <Label htmlFor="duracion">Duración (segundos)</Label>
+                  <Label htmlFor="duracion">Duración aprox. (segundos)</Label>
                   <div className="relative">
                     <Clock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                     <Input 
                       id="duracion"
                       type="number"
                       className="pl-10 rounded-xl"
-                      placeholder="Ej: 320"
+                      placeholder="Ej: 120"
                       value={formData.duracion}
                       onChange={e => setFormData(prev => ({ ...prev, duracion: e.target.value }))}
                     />
                   </div>
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="miniatura">URL de Miniatura (Opcional)</Label>
+                  <Input 
+                    id="miniatura"
+                    className="rounded-xl"
+                    placeholder="https://..."
+                    value={formData.miniaturaUrl}
+                    onChange={e => setFormData(prev => ({ ...prev, miniaturaUrl: e.target.value }))}
+                  />
                 </div>
               </div>
             </CardContent>
@@ -307,12 +360,12 @@ export default function UploadTutorialPage() {
                 {loading ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Guardando...
+                    Subiendo video...
                   </>
                 ) : (
                   <>
                     <Save className="mr-2 h-4 w-4" />
-                    Guardar Tutorial
+                    Guardar y Subir
                   </>
                 )}
               </Button>
