@@ -15,7 +15,9 @@ import {
   Loader2,
   Info,
   Edit2,
-  Layers
+  Layers,
+  LogOut,
+  User
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -64,6 +66,7 @@ function TutorialsContent() {
   const [search, setSearch] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("all");
   const [viewingTutorial, setViewingTutorial] = useState<Tutorial | null>(null);
+  const [userEmail, setUserEmail] = useState<string | null>(null);
   const { toast } = useToast();
 
   const fetchTutorials = async () => {
@@ -91,6 +94,11 @@ function TutorialsContent() {
   };
 
   useEffect(() => {
+    async function fetchUserData() {
+      const { data: { user } } = await supabasePROD.auth.getUser();
+      setUserEmail(user?.email || null);
+    }
+
     async function fetchCategories() {
       try {
         setLoadingCategories(true);
@@ -104,6 +112,8 @@ function TutorialsContent() {
         setLoadingCategories(false);
       }
     }
+    
+    fetchUserData();
     fetchCategories();
     fetchTutorials();
   }, [toast]);
@@ -177,7 +187,7 @@ function TutorialsContent() {
   return (
     <div className="min-h-screen bg-background flex flex-col">
       <header className="border-b bg-card/50 backdrop-blur-md sticky top-0 z-10">
-        <div className="container mx-auto px-6 py-4 flex flex-col md:flex-row justify-between items-center gap-4">
+        <div className="container mx-auto px-6 py-4 flex flex-col lg:flex-row justify-between items-center gap-4">
           <div className="flex items-center gap-3">
             <div className="bg-primary p-2 rounded-xl"><Video className="w-6 h-6 text-primary-foreground" /></div>
             <div>
@@ -185,25 +195,43 @@ function TutorialsContent() {
               <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">Base de Conocimiento</p>
             </div>
           </div>
-          <div className="flex items-center gap-3 w-full md:w-auto">
+          
+          <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto justify-center lg:justify-end">
             <div className="relative flex-1 md:w-64">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input placeholder="Buscar..." className="pl-9 rounded-xl" value={search} onChange={e => setSearch(e.target.value)} />
             </div>
+            
             <Button 
               variant="outline" 
               onClick={() => router.push('/admin')} 
               className="rounded-xl border-primary/20 hover:bg-primary/5 gap-2 px-4 h-10"
             >
               <Layers className="w-4 h-4 text-primary" />
-              <span className="hidden lg:inline font-medium">Estructura</span>
+              <span className="hidden sm:inline font-medium text-xs">Estructura</span>
             </Button>
-            <Button onClick={() => router.push('/upload')} className="rounded-xl shadow-lg shadow-primary/20">
-              <Plus className="mr-2 h-4 w-4" /> Nuevo
+            
+            <Button onClick={() => router.push('/upload')} className="rounded-xl shadow-lg shadow-primary/20 h-10 px-4">
+              <Plus className="mr-2 h-4 w-4" /> 
+              <span className="hidden sm:inline text-xs">Nuevo</span>
             </Button>
-            <Button variant="ghost" size="icon" onClick={handleLogout} title="Cerrar Sesión" className="rounded-full">
-               <ArrowLeft className="h-4 w-4 rotate-180" />
-            </Button>
+
+            <div className="flex items-center gap-2 bg-muted/30 p-1 pl-3 rounded-full border border-border/50">
+              {userEmail && (
+                <span className="text-xs font-medium text-muted-foreground hidden sm:block">
+                  {userEmail}
+                </span>
+              )}
+              <Button 
+                variant="ghost" 
+                size="icon" 
+                onClick={handleLogout} 
+                title="Cerrar Sesión" 
+                className="h-8 w-8 rounded-full hover:bg-destructive/10 hover:text-destructive"
+              >
+                <LogOut className="h-4 w-4" />
+              </Button>
+            </div>
           </div>
         </div>
       </header>
