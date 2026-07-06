@@ -17,7 +17,9 @@ import {
   Edit2,
   Layers,
   LogOut,
-  User
+  HelpCircle,
+  ChevronRight,
+  CheckCircle2
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -30,6 +32,13 @@ import {
   DropdownMenuTrigger 
 } from "@/components/ui/dropdown-menu";
 import { Separator } from "@/components/ui/separator";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { supabasePROD } from "@/lib/supabase";
 import { AdminGuard } from "@/components/admin-guard";
@@ -67,6 +76,7 @@ function TutorialsContent() {
   const [selectedCategory, setSelectedCategory] = useState("all");
   const [viewingTutorial, setViewingTutorial] = useState<Tutorial | null>(null);
   const [userEmail, setUserEmail] = useState<string | null>(null);
+  const [showHelp, setShowHelp] = useState(false);
   const { toast } = useToast();
 
   const fetchTutorials = async () => {
@@ -97,6 +107,13 @@ function TutorialsContent() {
     async function fetchUserData() {
       const { data: { user } } = await supabasePROD.auth.getUser();
       setUserEmail(user?.email || null);
+      
+      // Mostrar ayuda automáticamente si es la primera vez en esta sesión
+      const helpShown = sessionStorage.getItem('welcome_modal_shown');
+      if (!helpShown) {
+        setShowHelp(true);
+        sessionStorage.setItem('welcome_modal_shown', 'true');
+      }
     }
 
     async function fetchCategories() {
@@ -217,8 +234,17 @@ function TutorialsContent() {
             </Button>
 
             <div className="flex items-center gap-2 bg-muted/30 p-1 pl-3 rounded-full border border-border/50">
+              <Button 
+                variant="ghost" 
+                size="icon" 
+                onClick={() => setShowHelp(true)}
+                className="h-8 w-8 rounded-full text-muted-foreground hover:text-primary"
+                title="Ayuda"
+              >
+                <HelpCircle className="h-4 w-4" />
+              </Button>
               {userEmail && (
-                <span className="text-xs font-medium text-muted-foreground hidden sm:block">
+                <span className="text-xs font-medium text-muted-foreground hidden sm:block px-2">
                   {userEmail}
                 </span>
               )}
@@ -320,6 +346,67 @@ function TutorialsContent() {
           </div>
         )}
       </main>
+
+      {/* Modal de Ayuda / Pasos iniciales */}
+      <Dialog open={showHelp} onOpenChange={setShowHelp}>
+        <DialogContent className="max-w-md rounded-3xl p-8 border-none shadow-2xl overflow-hidden">
+          <div className="absolute top-0 right-0 w-32 h-32 bg-primary/5 rounded-full -mr-16 -mt-16" />
+          <DialogHeader className="relative z-10">
+            <div className="mx-auto bg-primary/20 p-4 rounded-3xl w-fit mb-4">
+              <HelpCircle className="w-10 h-10 text-primary" />
+            </div>
+            <DialogTitle className="text-2xl font-extrabold text-center">¡Bienvenido al Gestor!</DialogTitle>
+            <DialogDescription className="text-center text-base pt-2">
+              Sigue estos sencillos pasos para comenzar a alimentar tu base de conocimiento.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-6 mt-6 relative z-10">
+            <div className="flex gap-4 items-start">
+              <div className="bg-primary/10 text-primary font-bold w-8 h-8 rounded-full flex items-center justify-center shrink-0">1</div>
+              <div>
+                <h4 className="font-bold flex items-center gap-2">
+                  Gestionar Estructura <Layers className="w-3 h-3 text-primary" />
+                </h4>
+                <p className="text-sm text-muted-foreground leading-relaxed">
+                  Primero ingresa al botón de <strong>Estructura</strong>. En caso de no existir una categoría y un módulo (subcategoría) para tu proceso, créalos en esa sección.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex gap-4 items-start">
+              <div className="bg-primary/10 text-primary font-bold w-8 h-8 rounded-full flex items-center justify-center shrink-0">2</div>
+              <div>
+                <h4 className="font-bold flex items-center gap-2">
+                  Subir Nuevo Proceso <Plus className="w-3 h-3 text-primary" />
+                </h4>
+                <p className="text-sm text-muted-foreground leading-relaxed">
+                  Después, utiliza el botón <strong>Nuevo</strong> para subir el video del tutorial y asociarlo a la estructura (categoría y módulo) que definiste previamente.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex gap-4 items-start">
+              <div className="bg-primary/10 text-primary font-bold w-8 h-8 rounded-full flex items-center justify-center shrink-0">3</div>
+              <div>
+                <h4 className="font-bold flex items-center gap-2">
+                  Organización Automática <CheckCircle2 className="w-3 h-3 text-primary" />
+                </h4>
+                <p className="text-sm text-muted-foreground leading-relaxed">
+                  ¡Listo! Tu video aparecerá automáticamente organizado por módulos en la pantalla principal para que todo tu equipo pueda consultarlo.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="pt-8 relative z-10">
+            <Button onClick={() => setShowHelp(false)} className="w-full rounded-2xl h-12 shadow-lg shadow-primary/20 font-bold group">
+              ¡Entendido, vamos allá!
+              <ChevronRight className="ml-2 w-4 h-4 group-hover:translate-x-1 transition-transform" />
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
