@@ -14,7 +14,10 @@ import {
   AlertTriangle,
   ImageIcon,
   ClipboardCheck,
-  PlusCircle
+  PlusCircle,
+  FolderOpen,
+  Trash2,
+  Calendar
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -29,10 +32,20 @@ import {
   SelectValue,
   SelectSeparator,
 } from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { supabasePROD } from "@/lib/supabase";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { AdminGuard } from "@/components/admin-guard";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Badge } from "@/components/ui/badge";
 
 interface Categoria {
   id: number;
@@ -44,8 +57,17 @@ interface Modulo {
   nombre: string;
 }
 
+interface Borrador {
+  id: string;
+  titulo: string;
+  descripcion: string;
+  categoriaId: string;
+  moduloId: string;
+  fecha: string;
+}
+
 const MAX_FILE_SIZE_MB = 100;
-const DRAFT_KEY = "tutorial_upload_draft";
+const DRAFTS_KEY = "tutorial_upload_drafts_v2";
 
 export default function UploadTutorialPage() {
   return (
@@ -61,6 +83,8 @@ function UploadContent() {
   
   const [categories, setCategories] = useState<Categoria[]>([]);
   const [modules, setModules] = useState<Modulo[]>([]);
+  const [drafts, setDrafts] = useState<Borrador[]>([]);
+  const [showDraftsDialog, setShowDraftsDialog] = useState(false);
   
   const [loading, setLoading] = useState(false);
   const [loadingModules, setLoadingModules] = useState(false);
@@ -95,13 +119,13 @@ function UploadContent() {
       }
     }
 
-    const savedDraft = localStorage.getItem(DRAFT_KEY);
-    if (savedDraft) {
+    const savedDrafts = localStorage.getItem(DRAFTS_KEY);
+    if (savedDrafts) {
       try {
-        const parsed = JSON.parse(savedDraft);
-        setFormData(prev => ({ ...prev, titulo: parsed.titulo, descripcion: parsed.descripcion }));
-        toast({ title: "Borrador cargado", description: "Se ha recuperado la información guardada localmente." });
-      } catch (e) {}
+        setDrafts(JSON.parse(savedDrafts));
+      } catch (e) {
+        setDrafts([]);
+      }
     }
 
     fetchCategories();
@@ -170,12 +194,43 @@ function UploadContent() {
   };
 
   const handleSaveDraft = () => {
-    const draft = {
-      titulo: formData.titulo,
-      descripcion: formData.descripcion
+    if (!formData.titulo && !formData.descripcion) {
+      toast({ variant: "destructive", title: "Borrador vacío", description: "Escribe al menos un título para guardar el borrador." });
+      return;
+    }
+
+    const newDraft: Borrador = {
+      id: Date.now().toString(),
+      titulo: formData.titulo || "Sin título",
+      descripcion: formData.descripcion,
+      categoriaId: formData.categoriaId,
+      moduloId: formData.moduloId,
+      fecha: new Date().toLocaleString()
     };
-    localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
-    toast({ title: "Borrador guardado", description: "Los textos se han guardado en tu navegador." });
+
+    const updatedDrafts = [newDraft, ...drafts].slice(0, 10); // Límite de 10 borradores
+    setDrafts(updatedDrafts);
+    localStorage.setItem(DRAFTS_KEY, JSON.stringify(updatedDrafts));
+    toast({ title: "Borrador guardado", description: "Puedes recuperarlo en el menú de borradores." });
+  };
+
+  const handleLoadDraft = (draft: Borrador) => {
+    setFormData({
+      titulo: draft.titulo === "Sin título" ? "" : draft.titulo,
+      descripcion: draft.descripcion,
+      categoriaId: draft.categoriaId,
+      moduloId: draft.moduloId,
+      duracion: formData.duracion // Mantener duración si ya hay video
+    });
+    setShowDraftsDialog(false);
+    toast({ title: "Borrador cargado" });
+  };
+
+  const handleDeleteDraft = (e: React.MouseEvent, id: string) => {
+    e.stopPropagation();
+    const updatedDrafts = drafts.filter(d => d.id !== id);
+    setDrafts(updatedDrafts);
+    localStorage.setItem(DRAFTS_KEY, JSON.stringify(updatedDrafts));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -222,7 +277,6 @@ function UploadContent() {
 
       if (dbError) throw dbError;
       
-      localStorage.removeItem(DRAFT_KEY);
       toast({ title: "¡Éxito!", description: "El video ha sido registrado correctamente." });
       router.push('/');
     } catch (error: any) {
@@ -232,28 +286,67 @@ function UploadContent() {
     }
   };
 
-  const handleCategoryChange = (value: string) => {
-    if (value === "ADD_NEW_CATEGORY") {
-      router.push('/admin');
-      return;
-    }
-    setFormData(prev => ({ ...prev, categoriaId: value, moduloId: "" }));
-  };
-
-  const handleModuleChange = (value: string) => {
-    if (value === "ADD_NEW_MODULE") {
-      router.push('/admin');
-      return;
-    }
-    setFormData(prev => ({ ...prev, moduloId: value }));
-  };
-
   return (
     <div className="min-h-screen bg-background p-4 md:p-8">
       <div className="max-w-4xl mx-auto space-y-6">
-        <Button variant="ghost" onClick={() => router.back()} className="rounded-full">
-          <ArrowLeft className="mr-2 h-4 w-4" /> Volver
-        </Button>
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+          <Button variant="ghost" onClick={() => router.back()} className="rounded-full">
+            <ArrowLeft className="mr-2 h-4 w-4" /> Volver
+          </Button>
+
+          <Dialog open={showDraftsDialog} onOpenChange={setShowDraftsDialog}>
+            <DialogTrigger asChild>
+              <Button variant="outline" className="rounded-xl border-primary/20 hover:bg-primary/5">
+                <FolderOpen className="mr-2 h-4 w-4 text-primary" />
+                Mis Borradores
+                {drafts.length > 0 && (
+                  <Badge variant="secondary" className="ml-2 bg-primary/20 text-primary border-none">{drafts.length}</Badge>
+                )}
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-md rounded-2xl">
+              <DialogHeader>
+                <DialogTitle>Borradores Guardados</DialogTitle>
+                <DialogDescription>Selecciona un borrador para recuperar la información del proceso.</DialogDescription>
+              </DialogHeader>
+              <ScrollArea className="max-h-[60vh] mt-4 pr-4">
+                <div className="space-y-3">
+                  {drafts.length === 0 ? (
+                    <div className="text-center py-8 text-muted-foreground">
+                      <ClipboardCheck className="w-12 h-12 mx-auto mb-2 opacity-20" />
+                      <p>No tienes borradores guardados.</p>
+                    </div>
+                  ) : (
+                    drafts.map((draft) => (
+                      <div 
+                        key={draft.id} 
+                        onClick={() => handleLoadDraft(draft)}
+                        className="group p-4 border rounded-xl hover:border-primary/50 hover:bg-primary/5 transition-all cursor-pointer relative"
+                      >
+                        <div className="flex justify-between items-start mb-1">
+                          <h4 className="font-bold text-sm line-clamp-1 pr-8">{draft.titulo}</h4>
+                          <Button 
+                            variant="ghost" 
+                            size="icon" 
+                            className="h-8 w-8 text-muted-foreground hover:text-destructive absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity"
+                            onClick={(e) => handleDeleteDraft(e, draft.id)}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                        <p className="text-xs text-muted-foreground line-clamp-2 mb-2">{draft.descripcion || "Sin descripción"}</p>
+                        <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+                          <Calendar className="w-3 h-3" />
+                          {draft.fecha}
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </ScrollArea>
+            </DialogContent>
+          </Dialog>
+        </div>
 
         <Card className="border-none shadow-xl bg-card/50 backdrop-blur-sm">
           <CardHeader>
@@ -279,7 +372,7 @@ function UploadContent() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-2">
                   <Label>Categoría</Label>
-                  <Select value={formData.categoriaId} onValueChange={handleCategoryChange}>
+                  <Select value={formData.categoriaId} onValueChange={(v) => v === "ADD_NEW_CATEGORY" ? router.push('/admin') : setFormData(p => ({ ...p, categoriaId: v, moduloId: "" }))}>
                     <SelectTrigger className="rounded-xl">
                       <SelectValue placeholder="Selecciona categoría" />
                     </SelectTrigger>
@@ -287,17 +380,14 @@ function UploadContent() {
                       {categories.map(c => <SelectItem key={c.id} value={c.id.toString()}>{c.nombre}</SelectItem>)}
                       <SelectSeparator />
                       <SelectItem value="ADD_NEW_CATEGORY" className="text-primary font-medium focus:bg-primary/10 focus:text-primary">
-                        <div className="flex items-center gap-2">
-                          <PlusCircle className="w-4 h-4" />
-                          Crear nueva categoría...
-                        </div>
+                        <div className="flex items-center gap-2"><PlusCircle className="w-4 h-4" />Crear nueva categoría...</div>
                       </SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
                 <div className="space-y-2">
                   <Label>Módulo</Label>
-                  <Select value={formData.moduloId} onValueChange={handleModuleChange} disabled={!formData.categoriaId}>
+                  <Select value={formData.moduloId} onValueChange={(v) => v === "ADD_NEW_MODULE" ? router.push('/admin') : setFormData(p => ({ ...p, moduloId: v }))} disabled={!formData.categoriaId}>
                     <SelectTrigger className="rounded-xl">
                       <SelectValue placeholder={loadingModules ? "Cargando..." : "Selecciona módulo"} />
                     </SelectTrigger>
@@ -305,10 +395,7 @@ function UploadContent() {
                       {modules.map(m => <SelectItem key={m.id} value={m.id.toString()}>{m.nombre}</SelectItem>)}
                       <SelectSeparator />
                       <SelectItem value="ADD_NEW_MODULE" className="text-primary font-medium focus:bg-primary/10 focus:text-primary">
-                        <div className="flex items-center gap-2">
-                          <PlusCircle className="w-4 h-4" />
-                          Crear nuevo módulo...
-                        </div>
+                        <div className="flex items-center gap-2"><PlusCircle className="w-4 h-4" />Crear nuevo módulo...</div>
                       </SelectItem>
                     </SelectContent>
                   </Select>
@@ -335,14 +422,11 @@ function UploadContent() {
                   <div className="space-y-2">
                     <Label>Archivo de Video</Label>
                     <div className="flex items-center justify-center w-full h-32 border-2 border-dashed rounded-xl cursor-pointer bg-muted/30 hover:bg-muted/50 transition-all relative overflow-hidden">
-                      {videoPreview ? (
-                        <video src={videoPreview} className="absolute inset-0 w-full h-full object-cover opacity-30" />
-                      ) : null}
+                      {videoPreview && <video src={videoPreview} className="absolute inset-0 w-full h-full object-cover opacity-30" />}
                       <input type="file" accept="video/*" className="absolute inset-0 opacity-0 cursor-pointer" onChange={handleVideoChange} />
                       <div className="text-center px-2 z-10">
                         <FileVideo className={`mx-auto mb-2 ${videoFile ? 'text-primary' : 'text-muted-foreground'}`} />
                         <p className="text-xs truncate max-w-[200px] font-medium">{videoFile ? videoFile.name : "Seleccionar Video"}</p>
-                        {videoFile && <p className="text-[10px] text-muted-foreground mt-1">Haga clic para cambiar</p>}
                       </div>
                     </div>
                   </div>
@@ -350,14 +434,11 @@ function UploadContent() {
                   <div className="space-y-2">
                     <Label>Miniatura (Imagen)</Label>
                     <div className="flex items-center justify-center w-full h-32 border-2 border-dashed rounded-xl cursor-pointer bg-muted/30 hover:bg-muted/50 transition-all relative overflow-hidden">
-                      {imagePreview ? (
-                        <img src={imagePreview} alt="Preview" className="absolute inset-0 w-full h-full object-cover opacity-30" />
-                      ) : null}
+                      {imagePreview && <img src={imagePreview} alt="Preview" className="absolute inset-0 w-full h-full object-cover opacity-30" />}
                       <input type="file" accept="image/*" className="absolute inset-0 opacity-0 cursor-pointer" onChange={handleImageChange} />
                       <div className="text-center px-2 z-10">
                         <ImageIcon className={`mx-auto mb-2 ${imageFile ? 'text-primary' : 'text-muted-foreground'}`} />
                         <p className="text-xs truncate max-w-[200px] font-medium">{imageFile ? imageFile.name : "Seleccionar Imagen"}</p>
-                        {imageFile && <p className="text-[10px] text-muted-foreground mt-1">Haga clic para cambiar</p>}
                       </div>
                     </div>
                   </div>
@@ -414,7 +495,7 @@ function UploadContent() {
             <CardFooter className="flex flex-col sm:flex-row justify-between gap-3 pt-6 border-t">
               <Button type="button" variant="outline" onClick={handleSaveDraft} className="rounded-xl w-full sm:w-auto">
                 <ClipboardCheck className="mr-2 h-4 w-4" />
-                Guardar Borrador
+                Guardar como Borrador
               </Button>
               
               <div className="flex gap-3 w-full sm:w-auto">
