@@ -14,12 +14,11 @@ import {
   ArrowLeft,
   Loader2,
   Info,
-  Settings,
   Edit2,
   Layers
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { 
@@ -31,6 +30,7 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
 import { supabasePROD } from "@/lib/supabase";
+import { AdminGuard } from "@/components/admin-guard";
 
 interface Tutorial {
   id: number;
@@ -48,6 +48,14 @@ interface Tutorial {
 }
 
 export default function TutorialsPage() {
+  return (
+    <AdminGuard>
+      <TutorialsContent />
+    </AdminGuard>
+  );
+}
+
+function TutorialsContent() {
   const router = useRouter();
   const [tutorials, setTutorials] = useState<Tutorial[]>([]);
   const [categories, setCategories] = useState<string[]>([]);
@@ -130,6 +138,11 @@ export default function TutorialsPage() {
     }
   };
 
+  const handleLogout = async () => {
+    await supabasePROD.auth.signOut();
+    router.push('/login');
+  };
+
   const formatDuration = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
@@ -183,11 +196,13 @@ export default function TutorialsPage() {
               className="rounded-xl border-primary/20 hover:bg-primary/5 gap-2 px-4 h-10"
             >
               <Layers className="w-4 h-4 text-primary" />
-              <span className="hidden lg:inline font-medium">Gestionar Estructura</span>
-              <span className="lg:hidden font-medium">Estructura</span>
+              <span className="hidden lg:inline font-medium">Estructura</span>
             </Button>
             <Button onClick={() => router.push('/upload')} className="rounded-xl shadow-lg shadow-primary/20">
               <Plus className="mr-2 h-4 w-4" /> Nuevo
+            </Button>
+            <Button variant="ghost" size="icon" onClick={handleLogout} title="Cerrar Sesión" className="rounded-full">
+               <ArrowLeft className="h-4 w-4 rotate-180" />
             </Button>
           </div>
         </div>
