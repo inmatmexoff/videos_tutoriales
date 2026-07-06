@@ -13,7 +13,8 @@ import {
   FileVideo,
   AlertTriangle,
   ImageIcon,
-  ClipboardCheck
+  ClipboardCheck,
+  PlusCircle
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -26,6 +27,7 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
+  SelectSeparator,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { supabasePROD } from "@/lib/supabase";
@@ -93,7 +95,6 @@ function UploadContent() {
       }
     }
 
-    // Cargar borrador si existe
     const savedDraft = localStorage.getItem(DRAFT_KEY);
     if (savedDraft) {
       try {
@@ -193,14 +194,12 @@ function UploadContent() {
       const cleanMod = mod?.nombre.replace(/\s/g, '_') || 'Sin_Modulo';
       const timestamp = Date.now();
 
-      // 1. Subir Video
       const videoFileName = `${timestamp}_${videoFile.name.replace(/\s/g, '_')}`;
       const videoPath = `${cleanCat}/${cleanMod}/videos/${videoFileName}`;
       const { error: videoError } = await supabasePROD.storage.from('videos-tutoriales').upload(videoPath, videoFile);
       if (videoError) throw videoError;
       const { data: { publicUrl: videoUrl } } = supabasePROD.storage.from('videos-tutoriales').getPublicUrl(videoPath);
 
-      // 2. Subir Miniatura (si existe)
       let miniaturaUrl = `https://picsum.photos/seed/${Math.random()}/600/400`;
       if (imageFile) {
         const imgFileName = `${timestamp}_${imageFile.name.replace(/\s/g, '_')}`;
@@ -211,7 +210,6 @@ function UploadContent() {
         miniaturaUrl = imgUrl;
       }
 
-      // 3. Registrar en BD
       const { error: dbError } = await supabasePROD.from('tutoriales').insert([{
         modulo_id: parseInt(formData.moduloId),
         titulo: formData.titulo,
@@ -232,6 +230,22 @@ function UploadContent() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleCategoryChange = (value: string) => {
+    if (value === "ADD_NEW_CATEGORY") {
+      router.push('/admin');
+      return;
+    }
+    setFormData(prev => ({ ...prev, categoriaId: value, moduloId: "" }));
+  };
+
+  const handleModuleChange = (value: string) => {
+    if (value === "ADD_NEW_MODULE") {
+      router.push('/admin');
+      return;
+    }
+    setFormData(prev => ({ ...prev, moduloId: value }));
   };
 
   return (
@@ -265,23 +279,37 @@ function UploadContent() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-2">
                   <Label>Categoría</Label>
-                  <Select value={formData.categoriaId} onValueChange={v => setFormData(prev => ({ ...prev, categoriaId: v }))}>
+                  <Select value={formData.categoriaId} onValueChange={handleCategoryChange}>
                     <SelectTrigger className="rounded-xl">
                       <SelectValue placeholder="Selecciona categoría" />
                     </SelectTrigger>
                     <SelectContent>
                       {categories.map(c => <SelectItem key={c.id} value={c.id.toString()}>{c.nombre}</SelectItem>)}
+                      <SelectSeparator />
+                      <SelectItem value="ADD_NEW_CATEGORY" className="text-primary font-medium focus:bg-primary/10 focus:text-primary">
+                        <div className="flex items-center gap-2">
+                          <PlusCircle className="w-4 h-4" />
+                          Crear nueva categoría...
+                        </div>
+                      </SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
                 <div className="space-y-2">
                   <Label>Módulo</Label>
-                  <Select value={formData.moduloId} onValueChange={v => setFormData(prev => ({ ...prev, moduloId: v }))} disabled={!formData.categoriaId}>
+                  <Select value={formData.moduloId} onValueChange={handleModuleChange} disabled={!formData.categoriaId}>
                     <SelectTrigger className="rounded-xl">
                       <SelectValue placeholder={loadingModules ? "Cargando..." : "Selecciona módulo"} />
                     </SelectTrigger>
                     <SelectContent>
                       {modules.map(m => <SelectItem key={m.id} value={m.id.toString()}>{m.nombre}</SelectItem>)}
+                      <SelectSeparator />
+                      <SelectItem value="ADD_NEW_MODULE" className="text-primary font-medium focus:bg-primary/10 focus:text-primary">
+                        <div className="flex items-center gap-2">
+                          <PlusCircle className="w-4 h-4" />
+                          Crear nuevo módulo...
+                        </div>
+                      </SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
