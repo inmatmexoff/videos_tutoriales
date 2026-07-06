@@ -1,4 +1,3 @@
-
 "use client";
 
 import React, { useState, useEffect } from 'react';
@@ -9,12 +8,12 @@ import {
   Video, 
   Layout, 
   FileText, 
-  Upload as UploadIcon,
   Clock,
   Loader2,
   FileVideo,
   AlertTriangle,
-  ImageIcon
+  ImageIcon,
+  ClipboardCheck
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -44,6 +43,7 @@ interface Modulo {
 }
 
 const MAX_FILE_SIZE_MB = 100;
+const DRAFT_KEY = "tutorial_upload_draft";
 
 export default function UploadTutorialPage() {
   return (
@@ -61,11 +61,13 @@ function UploadContent() {
   const [modules, setModules] = useState<Modulo[]>([]);
   
   const [loading, setLoading] = useState(false);
-  const [loadingCategories, setLoadingCategories] = useState(true);
   const [loadingModules, setLoadingModules] = useState(false);
   
   const [videoFile, setVideoFile] = useState<File | null>(null);
   const [imageFile, setImageFile] = useState<File | null>(null);
+  const [videoPreview, setVideoPreview] = useState<string | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  
   const [fileError, setFileError] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     categoriaId: "",
@@ -78,7 +80,6 @@ function UploadContent() {
   useEffect(() => {
     async function fetchCategories() {
       try {
-        setLoadingCategories(true);
         const { data, error } = await supabasePROD
           .from('categorias_tutoriales')
           .select('id, nombre')
@@ -89,10 +90,19 @@ function UploadContent() {
         setCategories(data || []);
       } catch (error: any) {
         toast({ variant: "destructive", title: "Error", description: "No se pudieron cargar las categorías." });
-      } finally {
-        setLoadingCategories(false);
       }
     }
+
+    // Cargar borrador si existe
+    const savedDraft = localStorage.getItem(DRAFT_KEY);
+    if (savedDraft) {
+      try {
+        const parsed = JSON.parse(savedDraft);
+        setFormData(prev => ({ ...prev, titulo: parsed.titulo, descripcion: parsed.descripcion }));
+        toast({ title: "Borrador cargado", description: "Se ha recuperado la información guardada localmente." });
+      } catch (e) {}
+    }
+
     fetchCategories();
   }, [toast]);
 
@@ -114,7 +124,6 @@ function UploadContent() {
 
         if (error) throw error;
         setModules(data || []);
-        setFormData(prev => ({ ...prev, moduloId: "" }));
       } catch (error: any) {
         toast({ variant: "destructive", title: "Error", description: "No se pudieron cargar los módulos." });
       } finally {
@@ -133,16 +142,20 @@ function UploadContent() {
       if (fileSizeMB > MAX_FILE_SIZE_MB) {
         setFileError(`El video es demasiado grande. Límite: ${MAX_FILE_SIZE_MB}MB.`);
         setVideoFile(null);
+        setVideoPreview(null);
         return;
       }
       setVideoFile(file);
+      const url = URL.createObjectURL(file);
+      setVideoPreview(url);
+      
       const video = document.createElement('video');
       video.preload = 'metadata';
       video.onloadedmetadata = () => {
         window.URL.revokeObjectURL(video.src);
         setFormData(prev => ({ ...prev, duracion: Math.floor(video.duration).toString() }));
       };
-      video.src = URL.createObjectURL(file);
+      video.src = url;
     }
   };
 
@@ -150,7 +163,18 @@ function UploadContent() {
     const file = e.target.files?.[0];
     if (file) {
       setImageFile(file);
+      const url = URL.createObjectURL(file);
+      setImagePreview(url);
     }
+  };
+
+  const handleSaveDraft = () => {
+    const draft = {
+      titulo: formData.titulo,
+      descripcion: formData.descripcion
+    };
+    localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+    toast({ title: "Borrador guardado", description: "Los textos se han guardado en tu navegador." });
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -199,6 +223,8 @@ function UploadContent() {
       }]);
 
       if (dbError) throw dbError;
+      
+      localStorage.removeItem(DRAFT_KEY);
       toast({ title: "¡Éxito!", description: "El video ha sido registrado correctamente." });
       router.push('/');
     } catch (error: any) {
@@ -210,7 +236,7 @@ function UploadContent() {
 
   return (
     <div className="min-h-screen bg-background p-4 md:p-8">
-      <div className="max-w-3xl mx-auto space-y-6">
+      <div className="max-w-4xl mx-auto space-y-6">
         <Button variant="ghost" onClick={() => router.back()} className="rounded-full">
           <ArrowLeft className="mr-2 h-4 w-4" /> Volver
         </Button>
@@ -276,25 +302,53 @@ function UploadContent() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="space-y-2">
-                  <Label>Archivo de Video</Label>
-                  <div className="flex items-center justify-center w-full h-32 border-2 border-dashed rounded-xl cursor-pointer bg-muted/30 hover:bg-muted/50 transition-all relative">
-                    <input type="file" accept="video/*" className="absolute inset-0 opacity-0 cursor-pointer" onChange={handleVideoChange} />
-                    <div className="text-center px-2">
-                      <FileVideo className={`mx-auto mb-2 ${videoFile ? 'text-primary' : 'text-muted-foreground'}`} />
-                      <p className="text-xs truncate max-w-[200px]">{videoFile ? videoFile.name : "Subir Video"}</p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <Label>Archivo de Video</Label>
+                    <div className="flex items-center justify-center w-full h-32 border-2 border-dashed rounded-xl cursor-pointer bg-muted/30 hover:bg-muted/50 transition-all relative overflow-hidden">
+                      {videoPreview ? (
+                        <video src={videoPreview} className="absolute inset-0 w-full h-full object-cover opacity-30" />
+                      ) : null}
+                      <input type="file" accept="video/*" className="absolute inset-0 opacity-0 cursor-pointer" onChange={handleVideoChange} />
+                      <div className="text-center px-2 z-10">
+                        <FileVideo className={`mx-auto mb-2 ${videoFile ? 'text-primary' : 'text-muted-foreground'}`} />
+                        <p className="text-xs truncate max-w-[200px] font-medium">{videoFile ? videoFile.name : "Seleccionar Video"}</p>
+                        {videoFile && <p className="text-[10px] text-muted-foreground mt-1">Haga clic para cambiar</p>}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Miniatura (Imagen)</Label>
+                    <div className="flex items-center justify-center w-full h-32 border-2 border-dashed rounded-xl cursor-pointer bg-muted/30 hover:bg-muted/50 transition-all relative overflow-hidden">
+                      {imagePreview ? (
+                        <img src={imagePreview} alt="Preview" className="absolute inset-0 w-full h-full object-cover opacity-30" />
+                      ) : null}
+                      <input type="file" accept="image/*" className="absolute inset-0 opacity-0 cursor-pointer" onChange={handleImageChange} />
+                      <div className="text-center px-2 z-10">
+                        <ImageIcon className={`mx-auto mb-2 ${imageFile ? 'text-primary' : 'text-muted-foreground'}`} />
+                        <p className="text-xs truncate max-w-[200px] font-medium">{imageFile ? imageFile.name : "Seleccionar Imagen"}</p>
+                        {imageFile && <p className="text-[10px] text-muted-foreground mt-1">Haga clic para cambiar</p>}
+                      </div>
                     </div>
                   </div>
                 </div>
 
-                <div className="space-y-2">
-                  <Label>Miniatura (Imagen)</Label>
-                  <div className="flex items-center justify-center w-full h-32 border-2 border-dashed rounded-xl cursor-pointer bg-muted/30 hover:bg-muted/50 transition-all relative">
-                    <input type="file" accept="image/*" className="absolute inset-0 opacity-0 cursor-pointer" onChange={handleImageChange} />
-                    <div className="text-center px-2">
-                      <ImageIcon className={`mx-auto mb-2 ${imageFile ? 'text-primary' : 'text-muted-foreground'}`} />
-                      <p className="text-xs truncate max-w-[200px]">{imageFile ? imageFile.name : "Subir Imagen"}</p>
+                <div className="space-y-4">
+                   <div className="space-y-2">
+                    <Label>Vista Previa</Label>
+                    <div className="aspect-video bg-muted rounded-xl flex items-center justify-center border-2 border-dashed overflow-hidden">
+                      {videoPreview ? (
+                        <video src={videoPreview} controls className="w-full h-full object-contain" />
+                      ) : imagePreview ? (
+                        <img src={imagePreview} className="w-full h-full object-cover" alt="Thumb" />
+                      ) : (
+                        <div className="text-center text-muted-foreground p-4">
+                          <Video className="w-8 h-8 mx-auto mb-2 opacity-20" />
+                          <p className="text-xs">Selecciona un archivo para ver la previa</p>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -329,17 +383,24 @@ function UploadContent() {
               </div>
             </CardContent>
             
-            <CardFooter className="flex justify-end gap-3 pt-6 border-t">
-              <Button type="button" variant="ghost" onClick={() => router.back()} className="rounded-xl">
-                Cancelar
+            <CardFooter className="flex flex-col sm:flex-row justify-between gap-3 pt-6 border-t">
+              <Button type="button" variant="outline" onClick={handleSaveDraft} className="rounded-xl w-full sm:w-auto">
+                <ClipboardCheck className="mr-2 h-4 w-4" />
+                Guardar Borrador
               </Button>
-              <Button type="submit" disabled={loading || !videoFile} className="rounded-xl px-8 shadow-lg shadow-primary/20">
-                {loading ? (
-                  <><Loader2 className="animate-spin mr-2 h-4 w-4" /> Guardando...</>
-                ) : (
-                  <><Save className="mr-2 h-4 w-4" /> Guardar Proceso</>
-                )}
-              </Button>
+              
+              <div className="flex gap-3 w-full sm:w-auto">
+                <Button type="button" variant="ghost" onClick={() => router.back()} className="rounded-xl flex-1 sm:flex-none">
+                  Cancelar
+                </Button>
+                <Button type="submit" disabled={loading || !videoFile} className="rounded-xl px-8 shadow-lg shadow-primary/20 flex-1 sm:flex-none">
+                  {loading ? (
+                    <><Loader2 className="animate-spin mr-2 h-4 w-4" /> Guardando...</>
+                  ) : (
+                    <><Save className="mr-2 h-4 w-4" /> Guardar Proceso</>
+                  )}
+                </Button>
+              </div>
             </CardFooter>
           </form>
         </Card>

@@ -1,29 +1,35 @@
-
 "use client";
 
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { 
   ArrowLeft, 
-  Plus, 
   FolderPlus, 
   Layers, 
   Save, 
   Loader2, 
-  Trash2,
   Tag,
-  ListOrdered
+  Video
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { supabasePROD } from "@/lib/supabase";
 import { AdminGuard } from "@/components/admin-guard";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 export default function AdminSettingsPage() {
   return (
@@ -38,6 +44,7 @@ function AdminContent() {
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
   const [categories, setCategories] = useState<any[]>([]);
+  const [showModuleDialog, setShowModuleDialog] = useState(false);
   
   const [catData, setCatData] = useState({ nombre: "", descripcion: "" });
   const [modData, setModData] = useState({ categoriaId: "", nombre: "", descripcion: "" });
@@ -64,7 +71,7 @@ function AdminContent() {
         .insert([{
           nombre: catData.nombre,
           descripcion: catData.descripcion,
-          orden: 0 // Asignación automática
+          orden: 0
         }]);
 
       if (error) throw error;
@@ -89,12 +96,13 @@ function AdminContent() {
           categoria_id: parseInt(modData.categoriaId),
           nombre: modData.nombre,
           descripcion: modData.descripcion,
-          orden: 0 // Asignación automática
+          orden: 0
         }]);
 
       if (error) throw error;
       toast({ title: "Módulo creado", description: `Se ha registrado "${modData.nombre}"` });
       setModData({ categoriaId: modData.categoriaId, nombre: "", descripcion: "" });
+      setShowModuleDialog(true);
     } catch (error: any) {
       toast({ variant: "destructive", title: "Error", description: error.message });
     } finally {
@@ -223,6 +231,28 @@ function AdminContent() {
           </TabsContent>
         </Tabs>
       </div>
+
+      <AlertDialog open={showModuleDialog} onOpenChange={setShowModuleDialog}>
+        <AlertDialogContent className="rounded-2xl">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <Tag className="w-5 h-5 text-primary" /> Módulo Registrado
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              ¿Qué deseas hacer a continuación? Puedes seguir creando más módulos o ir a subir el video para este proceso.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="gap-2">
+            <AlertDialogCancel className="rounded-xl border-none bg-muted hover:bg-muted/80">Seguir Creando</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={() => router.push('/upload')}
+              className="rounded-xl shadow-lg shadow-primary/20 bg-primary hover:bg-primary/90"
+            >
+              <Video className="mr-2 h-4 w-4" /> Ir a Subir Video
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
