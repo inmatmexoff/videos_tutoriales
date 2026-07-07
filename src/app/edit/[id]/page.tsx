@@ -38,11 +38,7 @@ function EditContent() {
   const router = useRouter();
   const { id } = useParams();
   const { toast } = useToast();
-  const [loading, setLoading] = {
-    useState: (val: boolean) => [val, (v: boolean) => {}]
-  } as any; // Fixing the destructuring for the provided snippet style
   
-  // Real implementation for the component
   const [stateLoading, setStateLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   
@@ -272,8 +268,8 @@ function EditContent() {
                       ) : (
                         <ImageIcon className="w-12 h-12 text-muted-foreground" />
                       )}
-                      {!videoPreviewUrl && (
-                        <Badge variant="secondary" className="absolute top-2 right-2 bg-orange-500 text-white border-none">Sin Video</Badge>
+                      {!videoPreviewUrl && !previewUrl && (
+                        <Badge variant="secondary" className="absolute top-2 right-2 bg-orange-500 text-white border-none">Sin Contenido</Badge>
                       )}
                     </div>
                   </div>
