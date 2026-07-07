@@ -54,6 +54,7 @@ interface Tutorial {
   url_video: string;
   miniatura_url: string;
   duracion_segundos: number;
+  es_espacio: boolean;
   modulo: {
     nombre: string;
     categoria: {
@@ -89,7 +90,7 @@ function TutorialsContent() {
       const { data, error } = await supabasePROD
         .from('tutoriales')
         .select(`
-          id, titulo, descripcion, url_video, miniatura_url, duracion_segundos,
+          id, titulo, descripcion, url_video, miniatura_url, duracion_segundos, es_espacio,
           modulo:modulos_tutoriales (
             nombre,
             categoria:categorias_tutoriales (nombre)
@@ -189,7 +190,7 @@ function TutorialsContent() {
           <ArrowLeft className="mr-2 h-4 w-4" /> Volver al listado
         </Button>
         <div className="max-w-5xl mx-auto space-y-6">
-          {viewingTutorial.url_video ? (
+          {!viewingTutorial.es_espacio && viewingTutorial.url_video ? (
             <div className="aspect-video bg-black rounded-3xl overflow-hidden relative shadow-2xl ring-1 ring-border group">
               <video src={viewingTutorial.url_video} className="w-full h-full object-contain" controls autoPlay playsInline />
             </div>
@@ -323,7 +324,7 @@ function TutorialsContent() {
                   {groupTutorials.map((tutorial) => (
                     <Card key={tutorial.id} className="group overflow-hidden rounded-2xl border-none ring-1 ring-border bg-card/50 hover:ring-primary/50 transition-all duration-300">
                       <div className="relative aspect-video overflow-hidden bg-muted flex items-center justify-center">
-                        {tutorial.url_video ? (
+                        {!tutorial.es_espacio && tutorial.url_video ? (
                           <img 
                             src={tutorial.miniatura_url || "https://picsum.photos/seed/placeholder/600/400"} 
                             alt="" 
@@ -337,11 +338,11 @@ function TutorialsContent() {
                         )}
                         <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                           <Button variant="secondary" className="rounded-full h-12 w-12 p-0 shadow-xl" onClick={() => setViewingTutorial(tutorial)}>
-                            {tutorial.url_video ? <Play className="fill-current w-5 h-5" /> : <Info className="w-5 h-5" />}
+                            {!tutorial.es_espacio ? <Play className="fill-current w-5 h-5" /> : <Info className="w-5 h-5" />}
                           </Button>
                         </div>
                         
-                        {!tutorial.url_video && (
+                        {tutorial.es_espacio && (
                           <div className="absolute top-2 left-2">
                             <Badge className="bg-orange-500 hover:bg-orange-600 border-none rounded-lg flex items-center gap-1 shadow-lg">
                               <AlertCircle className="w-3 h-3" /> Espacio Creado
@@ -350,7 +351,7 @@ function TutorialsContent() {
                         )}
 
                         <div className="absolute bottom-2 right-2 bg-black/70 text-white text-[10px] px-2 py-1 rounded-md backdrop-blur-sm flex items-center gap-1">
-                          <Clock className="w-3 h-3" /> {tutorial.url_video ? formatDuration(tutorial.duracion_segundos) : "Pte. Video"}
+                          <Clock className="w-3 h-3" /> {!tutorial.es_espacio ? formatDuration(tutorial.duracion_segundos) : "Pte. Video"}
                         </div>
                       </div>
                       <CardHeader className="p-5">

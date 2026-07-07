@@ -53,7 +53,8 @@ function EditContent() {
     miniaturaUrl: "",
     videoUrl: "",
     duracion: "",
-    moduloId: null as number | null
+    moduloId: null as number | null,
+    esEspacio: false
   });
 
   useEffect(() => {
@@ -79,7 +80,8 @@ function EditContent() {
             miniaturaUrl: data.miniatura_url || "",
             videoUrl: data.url_video || "",
             duracion: data.duracion_segundos?.toString() || "0",
-            moduloId: data.modulo_id
+            moduloId: data.modulo_id,
+            esEspacio: data.es_espacio || false
           });
           setPreviewUrl(data.miniatura_url);
           setVideoPreviewUrl(data.url_video);
@@ -154,7 +156,8 @@ function EditContent() {
           miniatura_url: currentMiniaturaUrl,
           url_video: currentVideoUrl,
           duracion_segundos: parseInt(formData.duracion) || 0,
-          fecha_actualizacion: new Date().toISOString()
+          fecha_actualizacion: new Date().toISOString(),
+          es_espacio: currentVideoUrl === "" // Sigue siendo espacio si aún no tiene video
         })
         .eq('id', id);
 
@@ -197,7 +200,7 @@ function EditContent() {
           
           <form onSubmit={handleUpdate}>
             <CardContent className="space-y-6">
-              {!formData.videoUrl && !videoFile && (
+              {formData.esEspacio && !videoFile && (
                 <Alert className="bg-orange-500/10 border-orange-500/20 text-orange-600 rounded-2xl">
                   <AlertCircle className="h-4 w-4" />
                   <AlertTitle className="font-bold">Espacio Pendiente</AlertTitle>
@@ -268,7 +271,7 @@ function EditContent() {
                       ) : (
                         <ImageIcon className="w-12 h-12 text-muted-foreground" />
                       )}
-                      {!videoPreviewUrl && !previewUrl && (
+                      {formData.esEspacio && !videoPreviewUrl && (
                         <Badge variant="secondary" className="absolute top-2 right-2 bg-orange-500 text-white border-none">Sin Contenido</Badge>
                       )}
                     </div>

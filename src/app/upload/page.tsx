@@ -281,10 +281,11 @@ function UploadContent() {
         modulo_id: parseInt(formData.moduloId),
         titulo: formData.titulo,
         descripcion: formData.descripcion,
-        url_video: videoUrl, // Puede ser string vacío si se carga después
+        url_video: videoUrl,
         miniatura_url: miniaturaUrl,
         duracion_segundos: parseInt(formData.duracion) || 0,
-        orden: 0
+        orden: 0,
+        es_espacio: uploadLater
       }]);
 
       if (dbError) throw dbError;
