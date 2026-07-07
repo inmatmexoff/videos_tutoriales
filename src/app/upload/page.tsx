@@ -18,7 +18,8 @@ import {
   FolderOpen,
   Trash2,
   Calendar,
-  Clock9
+  Clock9,
+  Info
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -168,7 +169,7 @@ function UploadContent() {
     if (file) {
       const fileSizeMB = file.size / (1024 * 1024);
       if (fileSizeMB > MAX_FILE_SIZE_MB) {
-        setFileError(`El video es demasiado grande. Límite: ${MAX_FILE_SIZE_MB}MB.`);
+        setFileError(`El video es demasiado grande (${fileSizeMB.toFixed(1)}MB). El límite permitido es de ${MAX_FILE_SIZE_MB}MB.`);
         setVideoFile(null);
         setVideoPreview(null);
         return;
@@ -374,7 +375,7 @@ function UploadContent() {
           <form onSubmit={handleSubmit}>
             <CardContent className="space-y-6">
               {fileError && (
-                <Alert variant="destructive">
+                <Alert variant="destructive" className="rounded-2xl">
                   <AlertTriangle className="h-4 w-4" />
                   <AlertTitle>Error de archivo</AlertTitle>
                   <AlertDescription>{fileError}</AlertDescription>
@@ -442,7 +443,15 @@ function UploadContent() {
               <div className={`grid grid-cols-1 md:grid-cols-2 gap-8 transition-opacity duration-300 ${uploadLater ? 'opacity-40 grayscale pointer-events-none' : 'opacity-100'}`}>
                 <div className="space-y-4">
                   <div className="space-y-2">
-                    <Label>Archivo de Video</Label>
+                    <div className="flex items-center justify-between mb-1">
+                      <Label className="flex items-center gap-2">
+                        Archivo de Video
+                        <Info className="w-3 h-3 text-muted-foreground" />
+                      </Label>
+                      <Badge variant="outline" className="text-[9px] h-4 bg-orange-500/5 text-orange-600 border-orange-200 uppercase font-bold tracking-wider">
+                        Máx. {MAX_FILE_SIZE_MB}MB
+                      </Badge>
+                    </div>
                     <div className="flex items-center justify-center w-full h-32 border-2 border-dashed rounded-xl cursor-pointer bg-muted/30 hover:bg-muted/50 transition-all relative overflow-hidden">
                       {videoPreview && <video src={videoPreview} className="absolute inset-0 w-full h-full object-cover opacity-30" />}
                       <input type="file" accept="video/*" className="absolute inset-0 opacity-0 cursor-pointer" onChange={handleVideoChange} disabled={uploadLater} />
