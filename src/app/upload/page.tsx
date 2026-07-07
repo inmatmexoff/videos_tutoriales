@@ -257,6 +257,9 @@ function UploadContent() {
 
     setLoading(true);
     try {
+      const { data: { user } } = await supabasePROD.auth.getUser();
+      if (!user) throw new Error("Usuario no autenticado");
+
       const cat = categories.find(c => c.id.toString() === formData.categoriaId);
       const mod = modules.find(m => m.id.toString() === formData.moduloId);
       
@@ -284,7 +287,7 @@ function UploadContent() {
         miniaturaUrl = imgUrl;
       }
 
-      const { error: dbError } = await supabasePROD.from('tutoriales').insert([{
+      const { data: newTutorial, error: dbError } = await supabasePROD.from('tutoriales').insert([{
         modulo_id: parseInt(formData.moduloId),
         titulo: formData.titulo,
         descripcion: formData.descripcion,
@@ -293,10 +296,21 @@ function UploadContent() {
         duracion_segundos: parseInt(formData.duracion) || 0,
         orden: 0,
         es_espacio: uploadLater,
-        tipo_contenido: formData.tipoContenido
-      }]);
+        tipo_contenido: formData.tipoContenido,
+        creado_por: user.id
+      }]).select().single();
 
       if (dbError) throw dbError;
+
+      // Log Auditoría
+      if (newTutorial) {
+        await supabasePROD.from('auditoria_tutoriales').insert([{
+          tutorial_id: newTutorial.id,
+          usuario_id: user.id,
+          accion: 'CREACION',
+          detalles: `El usuario creó el proceso: ${formData.titulo} (${uploadLater ? 'Espacio' : 'Video Completo'})`
+        }]);
+      }
       
       toast({ title: "¡Éxito!", description: uploadLater ? "Espacio de proceso creado correctamente." : "El video ha sido registrado correctamente." });
       router.push('/');
