@@ -13,7 +13,9 @@ import {
   ImageIcon,
   Image as ImageIconLucide,
   FileVideo,
-  AlertCircle
+  AlertCircle,
+  Settings,
+  Monitor
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -25,6 +27,7 @@ import { supabasePROD } from "@/lib/supabase";
 import { AdminGuard } from "@/components/admin-guard";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 export default function EditTutorialPage() {
   return (
@@ -54,7 +57,8 @@ function EditContent() {
     videoUrl: "",
     duracion: "",
     moduloId: null as number | null,
-    esEspacio: false
+    esEspacio: false,
+    tipoContenido: "operacion"
   });
 
   useEffect(() => {
@@ -81,7 +85,8 @@ function EditContent() {
             videoUrl: data.url_video || "",
             duracion: data.duracion_segundos?.toString() || "0",
             moduloId: data.modulo_id,
-            esEspacio: data.es_espacio || false
+            esEspacio: data.es_espacio || false,
+            tipoContenido: data.tipo_contenido || "operacion"
           });
           setPreviewUrl(data.miniatura_url);
           setVideoPreviewUrl(data.url_video);
@@ -160,7 +165,8 @@ function EditContent() {
           url_video: currentVideoUrl,
           duracion_segundos: parseInt(formData.duracion) || 0,
           fecha_actualizacion: new Date().toISOString(),
-          es_espacio: currentVideoUrl === "" // Sigue siendo espacio si aún no tiene video
+          es_espacio: currentVideoUrl === "" && !videoFile, // Sigue siendo espacio si aún no tiene video
+          tipo_contenido: formData.tipoContenido
         })
         .eq('id', id);
 
@@ -219,17 +225,36 @@ function EditContent() {
                 </Alert>
               )}
 
-              <div className="space-y-2">
-                <Label htmlFor="titulo">Título</Label>
-                <div className="relative">
-                  <Layout className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input 
-                    id="titulo"
-                    className="pl-10 rounded-xl"
-                    value={formData.titulo}
-                    onChange={e => setFormData(prev => ({ ...prev, titulo: e.target.value }))}
-                    required
-                  />
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="titulo">Título</Label>
+                  <div className="relative">
+                    <Layout className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input 
+                      id="titulo"
+                      className="pl-10 rounded-xl"
+                      value={formData.titulo}
+                      onChange={e => setFormData(prev => ({ ...prev, titulo: e.target.value }))}
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Tipo de Contenido</Label>
+                  <Select value={formData.tipoContenido} onValueChange={(v) => setFormData(p => ({ ...p, tipoContenido: v }))}>
+                    <SelectTrigger className="rounded-xl">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="operacion">
+                        <div className="flex items-center gap-2"><Settings className="w-4 h-4" /> Operación</div>
+                      </SelectItem>
+                      <SelectItem value="software">
+                        <div className="flex items-center gap-2"><Monitor className="w-4 h-4" /> Software</div>
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
 

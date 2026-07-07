@@ -19,7 +19,9 @@ import {
   Trash2,
   Calendar,
   Clock9,
-  Info
+  Info,
+  Monitor,
+  Settings
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -66,11 +68,12 @@ interface Borrador {
   descripcion: string;
   categoriaId: string;
   moduloId: string;
+  tipoContenido: string;
   fecha: string;
 }
 
 const MAX_FILE_SIZE_MB = 50;
-const DRAFTS_KEY = "tutorial_upload_drafts_v2";
+const DRAFTS_KEY = "tutorial_upload_drafts_v3";
 
 export default function UploadTutorialPage() {
   return (
@@ -105,6 +108,7 @@ function UploadContent() {
     titulo: "",
     descripcion: "",
     duracion: "0",
+    tipoContenido: "operacion"
   });
 
   useEffect(() => {
@@ -209,6 +213,7 @@ function UploadContent() {
       descripcion: formData.descripcion,
       categoriaId: formData.categoriaId,
       moduloId: formData.moduloId,
+      tipoContenido: formData.tipoContenido,
       fecha: new Date().toLocaleString()
     };
 
@@ -224,6 +229,7 @@ function UploadContent() {
       descripcion: draft.descripcion,
       categoriaId: draft.categoriaId,
       moduloId: draft.moduloId,
+      tipoContenido: draft.tipoContenido || "operacion",
       duracion: formData.duracion
     });
     setShowDraftsDialog(false);
@@ -286,7 +292,8 @@ function UploadContent() {
         miniatura_url: miniaturaUrl,
         duracion_segundos: parseInt(formData.duracion) || 0,
         orden: 0,
-        es_espacio: uploadLater
+        es_espacio: uploadLater,
+        tipo_contenido: formData.tipoContenido
       }]);
 
       if (dbError) throw dbError;
@@ -350,6 +357,7 @@ function UploadContent() {
                         </div>
                         <p className="text-xs text-muted-foreground line-clamp-2 mb-2">{draft.descripcion || "Sin descripción"}</p>
                         <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+                          <Badge variant="secondary" className="bg-primary/5 text-primary scale-75 origin-left">{draft.tipoContenido === 'operacion' ? 'Operación' : 'Software'}</Badge>
                           <Calendar className="w-3 h-3" /> {draft.fecha}
                         </div>
                       </div>
@@ -392,7 +400,7 @@ function UploadContent() {
                 <Switch checked={uploadLater} onCheckedChange={setUploadLater} />
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <div className="space-y-2">
                   <Label>Categoría</Label>
                   <Select value={formData.categoriaId} onValueChange={(v) => v === "ADD_NEW_CATEGORY" ? router.push('/admin') : setFormData(p => ({ ...p, categoriaId: v, moduloId: "" }))}>
@@ -419,6 +427,22 @@ function UploadContent() {
                       <SelectSeparator />
                       <SelectItem value="ADD_NEW_MODULE" className="text-primary font-medium focus:bg-primary/10">
                         <div className="flex items-center gap-2"><PlusCircle className="w-4 h-4" />Crear nuevo...</div>
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Tipo de Contenido</Label>
+                  <Select value={formData.tipoContenido} onValueChange={(v) => setFormData(p => ({ ...p, tipoContenido: v }))}>
+                    <SelectTrigger className="rounded-xl">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="operacion">
+                        <div className="flex items-center gap-2"><Settings className="w-4 h-4" /> Operación</div>
+                      </SelectItem>
+                      <SelectItem value="software">
+                        <div className="flex items-center gap-2"><Monitor className="w-4 h-4" /> Software</div>
                       </SelectItem>
                     </SelectContent>
                   </Select>

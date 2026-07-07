@@ -23,7 +23,9 @@ import {
   Clock9,
   AlertCircle,
   UploadCloud,
-  FileVideo
+  FileVideo,
+  Monitor,
+  Settings
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -55,6 +57,7 @@ interface Tutorial {
   miniatura_url: string;
   duracion_segundos: number;
   es_espacio: boolean;
+  tipo_contenido: 'operacion' | 'software';
   modulo: {
     nombre: string;
     categoria: {
@@ -90,7 +93,7 @@ function TutorialsContent() {
       const { data, error } = await supabasePROD
         .from('tutoriales')
         .select(`
-          id, titulo, descripcion, url_video, miniatura_url, duracion_segundos, es_espacio,
+          id, titulo, descripcion, url_video, miniatura_url, duracion_segundos, es_espacio, tipo_contenido,
           modulo:modulos_tutoriales (
             nombre,
             categoria:categorias_tutoriales (nombre)
@@ -223,8 +226,14 @@ function TutorialsContent() {
           )}
           <div className="space-y-4">
             <div className="flex flex-col md:flex-row justify-between items-start gap-4">
-              <div>
-                <h1 className="text-3xl font-bold">{viewingTutorial.titulo}</h1>
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <h1 className="text-3xl font-bold">{viewingTutorial.titulo}</h1>
+                  <Badge variant="secondary" className="bg-primary/5 text-primary border-none">
+                    {viewingTutorial.tipo_contenido === 'software' ? <Monitor className="w-3 h-3 mr-1" /> : <Settings className="w-3 h-3 mr-1" />}
+                    {viewingTutorial.tipo_contenido === 'software' ? 'Software' : 'Operación'}
+                  </Badge>
+                </div>
                 <p className="text-primary font-medium">{viewingTutorial.modulo.nombre}</p>
               </div>
               <Badge variant="outline" className="px-4 py-1 text-lg rounded-full">{viewingTutorial.modulo.categoria.nombre}</Badge>
@@ -355,13 +364,17 @@ function TutorialsContent() {
                           </Button>
                         </div>
                         
-                        {tutorial.es_espacio && (
-                          <div className="absolute top-2 left-2">
-                            <Badge className="bg-orange-500 hover:bg-orange-600 border-none rounded-lg flex items-center gap-1 shadow-lg">
-                              <AlertCircle className="w-3 h-3" /> Espacio Creado
+                        <div className="absolute top-2 left-2 flex flex-col gap-1">
+                          {tutorial.es_espacio && (
+                            <Badge className="bg-orange-500 hover:bg-orange-600 border-none rounded-lg flex items-center gap-1 shadow-lg text-[10px]">
+                              <AlertCircle className="w-3 h-3" /> Espacio
                             </Badge>
-                          </div>
-                        )}
+                          )}
+                          <Badge className="bg-black/60 backdrop-blur-md border-none rounded-lg flex items-center gap-1 text-[9px] font-bold uppercase tracking-wider">
+                            {tutorial.tipo_contenido === 'software' ? <Monitor className="w-3 h-3" /> : <Settings className="w-3 h-3" />}
+                            {tutorial.tipo_contenido === 'software' ? 'Software' : 'Operación'}
+                          </Badge>
+                        </div>
 
                         <div className="absolute bottom-2 right-2 bg-black/70 text-white text-[10px] px-2 py-1 rounded-md backdrop-blur-sm flex items-center gap-1">
                           <Clock className="w-3 h-3" /> {!tutorial.es_espacio ? formatDuration(tutorial.duracion_segundos) : "Pte. Video"}
@@ -443,10 +456,10 @@ function TutorialsContent() {
               <div className="bg-primary/10 text-primary font-bold w-8 h-8 rounded-full flex items-center justify-center shrink-0">3</div>
               <div>
                 <h4 className="font-bold flex items-center gap-2">
-                  Organización Automática <CheckCircle2 className="w-3 h-3 text-primary" />
+                  Clasificación Inteligente <CheckCircle2 className="w-3 h-3 text-primary" />
                 </h4>
                 <p className="text-sm text-muted-foreground leading-relaxed">
-                  ¡Listo! Tu video aparecerá organizado por categorías en la vista general o por módulos al filtrar por categoría.
+                  Clasifica tus videos como <strong>Software</strong> u <strong>Operación</strong> para que tus compañeros encuentren lo que necesitan más rápido.
                 </p>
               </div>
             </div>
