@@ -1,4 +1,3 @@
-
 "use client";
 
 import React, { useState, useMemo, useEffect } from 'react';
@@ -20,7 +19,9 @@ import {
   HelpCircle,
   ChevronRight,
   CheckCircle2,
-  FolderOpen
+  FolderOpen,
+  Clock9,
+  AlertCircle
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -147,7 +148,6 @@ function TutorialsContent() {
   const groupedTutorials = useMemo(() => {
     const groups: Record<string, Tutorial[]> = {};
     filteredTutorials.forEach(t => {
-      // Si el filtro es "Todos", agrupamos por Categoría. Si no, agrupamos por Módulo.
       const groupName = selectedCategory === "all" 
         ? (t.modulo?.categoria?.nombre || "General")
         : (t.modulo?.nombre || "General");
@@ -187,9 +187,24 @@ function TutorialsContent() {
           <ArrowLeft className="mr-2 h-4 w-4" /> Volver al listado
         </Button>
         <div className="max-w-5xl mx-auto space-y-6">
-          <div className="aspect-video bg-black rounded-3xl overflow-hidden relative shadow-2xl ring-1 ring-border group">
-            <video src={viewingTutorial.url_video} className="w-full h-full object-contain" controls autoPlay playsInline />
-          </div>
+          {viewingTutorial.url_video ? (
+            <div className="aspect-video bg-black rounded-3xl overflow-hidden relative shadow-2xl ring-1 ring-border group">
+              <video src={viewingTutorial.url_video} className="w-full h-full object-contain" controls autoPlay playsInline />
+            </div>
+          ) : (
+            <div className="aspect-video bg-muted rounded-3xl flex flex-col items-center justify-center border-2 border-dashed border-primary/20 gap-4">
+              <div className="p-4 bg-primary/10 rounded-full">
+                <Clock9 className="w-12 h-12 text-primary" />
+              </div>
+              <div className="text-center">
+                <h2 className="text-2xl font-bold">Video Pendiente</h2>
+                <p className="text-muted-foreground">Este es un espacio reservado. El video aún no ha sido cargado.</p>
+              </div>
+              <Button onClick={() => router.push(`/edit/${viewingTutorial.id}`)} className="rounded-xl">
+                <Edit2 className="w-4 h-4 mr-2" /> Cargar video ahora
+              </Button>
+            </div>
+          )}
           <div className="space-y-4">
             <div className="flex flex-col md:flex-row justify-between items-start gap-4">
               <div>
@@ -243,7 +258,6 @@ function TutorialsContent() {
                 size="icon" 
                 onClick={() => setShowHelp(true)}
                 className="h-8 w-8 rounded-full text-muted-foreground hover:text-primary"
-                title="Ayuda"
               >
                 <HelpCircle className="h-4 w-4" />
               </Button>
@@ -256,7 +270,6 @@ function TutorialsContent() {
                 variant="ghost" 
                 size="icon" 
                 onClick={handleLogout} 
-                title="Cerrar Sesión" 
                 className="h-8 w-8 rounded-full hover:bg-destructive/10 hover:text-destructive"
               >
                 <LogOut className="h-4 w-4" />
@@ -281,7 +294,7 @@ function TutorialsContent() {
             {selectedCategory === "all" ? "Todos los Procesos" : `Procesos de ${selectedCategory}`}
             {!loading && <Badge variant="secondary" className="ml-2 font-mono">{filteredTutorials.length}</Badge>}
           </h2>
-          <p className="text-muted-foreground flex items-center gap-2">
+          <p className="text-muted-foreground flex items-center gap-2 text-sm">
             <Info className="w-4 h-4" /> 
             {selectedCategory === "all" ? "Vista general por categorías del sistema." : "Listado detallado por módulos de trabajo."}
           </p>
@@ -315,11 +328,20 @@ function TutorialsContent() {
                         />
                         <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                           <Button variant="secondary" className="rounded-full h-12 w-12 p-0 shadow-xl" onClick={() => setViewingTutorial(tutorial)}>
-                            <Play className="fill-current w-5 h-5" />
+                            {tutorial.url_video ? <Play className="fill-current w-5 h-5" /> : <Info className="w-5 h-5" />}
                           </Button>
                         </div>
+                        
+                        {!tutorial.url_video && (
+                          <div className="absolute top-2 left-2">
+                            <Badge className="bg-orange-500 hover:bg-orange-600 border-none rounded-lg flex items-center gap-1 shadow-lg">
+                              <AlertCircle className="w-3 h-3" /> Espacio Creado
+                            </Badge>
+                          </div>
+                        )}
+
                         <div className="absolute bottom-2 right-2 bg-black/70 text-white text-[10px] px-2 py-1 rounded-md backdrop-blur-sm flex items-center gap-1">
-                          <Clock className="w-3 h-3" /> {formatDuration(tutorial.duracion_segundos)}
+                          <Clock className="w-3 h-3" /> {tutorial.url_video ? formatDuration(tutorial.duracion_segundos) : "Pte. Video"}
                         </div>
                       </div>
                       <CardHeader className="p-5">
@@ -389,7 +411,7 @@ function TutorialsContent() {
                   Subir Nuevo Proceso <Plus className="w-3 h-3 text-primary" />
                 </h4>
                 <p className="text-sm text-muted-foreground leading-relaxed">
-                  Después, utiliza el botón <strong>Nuevo</strong> para subir el video del tutorial y asociarlo a la estructura definida previamente.
+                  Utiliza el botón <strong>Nuevo</strong> para registrar el tutorial. Puedes subir el video ahora o crear un <strong>Espacio</strong> para cargarlo más tarde.
                 </p>
               </div>
             </div>
@@ -401,7 +423,7 @@ function TutorialsContent() {
                   Organización Automática <CheckCircle2 className="w-3 h-3 text-primary" />
                 </h4>
                 <p className="text-sm text-muted-foreground leading-relaxed">
-                  ¡Listo! Tu video aparecerá organizado por categorías en la vista general o por módulos al filtrar.
+                  ¡Listo! Tu video aparecerá organizado por categorías en la vista general o por módulos al filtrar por categoría.
                 </p>
               </div>
             </div>

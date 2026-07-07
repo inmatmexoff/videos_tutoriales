@@ -1,4 +1,3 @@
-
 "use client";
 
 import React, { useState, useEffect } from 'react';
@@ -12,7 +11,9 @@ import {
   Clock,
   Layout,
   ImageIcon,
-  Image as ImageIconLucide
+  Image as ImageIconLucide,
+  FileVideo,
+  AlertCircle
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -22,6 +23,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { supabasePROD } from "@/lib/supabase";
 import { AdminGuard } from "@/components/admin-guard";
+import { Badge } from "@/components/ui/badge";
 
 export default function EditTutorialPage() {
   return (
@@ -39,11 +41,15 @@ function EditContent() {
   const [saving, setSaving] = useState(false);
   
   const [imageFile, setImageFile] = useState<File | null>(null);
+  const [videoFile, setVideoFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string>("");
+  const [videoPreviewUrl, setVideoPreviewUrl] = useState<string>("");
+  
   const [formData, setFormData] = useState({
     titulo: "",
     descripcion: "",
     miniaturaUrl: "",
+    videoUrl: "",
     duracion: "",
     moduloId: null as number | null
   });
@@ -69,10 +75,12 @@ function EditContent() {
             titulo: data.titulo,
             descripcion: data.descripcion || "",
             miniaturaUrl: data.miniatura_url || "",
+            videoUrl: data.url_video || "",
             duracion: data.duracion_segundos?.toString() || "0",
             moduloId: data.modulo_id
           });
           setPreviewUrl(data.miniatura_url);
+          setVideoPreviewUrl(data.url_video);
         }
       } catch (error: any) {
         toast({ variant: "destructive", title: "Error", description: "No se pudo cargar el tutorial." });
@@ -92,24 +100,50 @@ function EditContent() {
     }
   };
 
+  const handleVideoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setVideoFile(file);
+      const url = URL.createObjectURL(file);
+      setVideoPreviewUrl(url);
+      
+      const video = document.createElement('video');
+      video.preload = 'metadata';
+      video.onloadedmetadata = () => {
+        window.URL.revokeObjectURL(video.src);
+        setFormData(prev => ({ ...prev, duracion: Math.floor(video.duration).toString() }));
+      };
+      video.src = url;
+    }
+  };
+
   const handleUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
     try {
       let currentMiniaturaUrl = formData.miniaturaUrl;
+      let currentVideoUrl = formData.videoUrl;
+
+      const timestamp = Date.now();
 
       // Subir nueva miniatura si se seleccionó una
       if (imageFile) {
-        // Obtener nombres para la ruta (esto es opcional pero mantiene orden)
-        const timestamp = Date.now();
         const imgFileName = `${timestamp}_${imageFile.name.replace(/\s/g, '_')}`;
         const imgPath = `editados/thumbnails/${imgFileName}`;
-        
         const { error: imgError } = await supabasePROD.storage.from('videos-tutoriales').upload(imgPath, imageFile);
         if (imgError) throw imgError;
-        
         const { data: { publicUrl } } = supabasePROD.storage.from('videos-tutoriales').getPublicUrl(imgPath);
         currentMiniaturaUrl = publicUrl;
+      }
+
+      // Subir nuevo video si se seleccionó uno
+      if (videoFile) {
+        const videoFileName = `${timestamp}_${videoFile.name.replace(/\s/g, '_')}`;
+        const videoPath = `editados/videos/${videoFileName}`;
+        const { error: vidError } = await supabasePROD.storage.from('videos-tutoriales').upload(videoPath, videoFile);
+        if (vidError) throw vidError;
+        const { data: { publicUrl } } = supabasePROD.storage.from('videos-tutoriales').getPublicUrl(videoPath);
+        currentVideoUrl = publicUrl;
       }
 
       const { error } = await supabasePROD
@@ -118,6 +152,7 @@ function EditContent() {
           titulo: formData.titulo,
           descripcion: formData.descripcion,
           miniatura_url: currentMiniaturaUrl,
+          url_video: currentVideoUrl,
           duracion_segundos: parseInt(formData.duracion) || 0,
           fecha_actualizacion: new Date().toISOString()
         })
@@ -125,7 +160,7 @@ function EditContent() {
 
       if (error) throw error;
 
-      toast({ title: "Actualizado", description: "El tutorial se ha guardado correctamente." });
+      toast({ title: "Actualizado", description: "El proceso se ha guardado correctamente." });
       router.push('/');
     } catch (error: any) {
       toast({ variant: "destructive", title: "Error", description: error.message });
@@ -155,13 +190,21 @@ function EditContent() {
               <div className="p-2 bg-primary/10 rounded-lg">
                 <Video className="w-6 h-6 text-primary" />
               </div>
-              <CardTitle className="text-2xl">Editar Tutorial</CardTitle>
+              <CardTitle className="text-2xl">Editar Proceso</CardTitle>
             </div>
             <CardDescription>Modifica los datos del tutorial seleccionado.</CardDescription>
           </CardHeader>
           
           <form onSubmit={handleUpdate}>
             <CardContent className="space-y-6">
+              {!formData.videoUrl && !videoFile && (
+                <Alert className="bg-orange-500/10 border-orange-500/20 text-orange-600 rounded-2xl">
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertTitle className="font-bold">Espacio Pendiente</AlertTitle>
+                  <AlertDescription>Este proceso no tiene un video asociado. Súbelo a continuación.</AlertDescription>
+                </Alert>
+              )}
+
               <div className="space-y-2">
                 <Label htmlFor="titulo">Título</Label>
                 <div className="relative">
@@ -192,6 +235,46 @@ function EditContent() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-4">
                   <div className="space-y-2">
+                    <Label>Cambiar Video</Label>
+                    <div className="flex items-center justify-center w-full h-32 border-2 border-dashed rounded-xl cursor-pointer bg-muted/30 hover:bg-muted/50 transition-all relative overflow-hidden">
+                      <input type="file" accept="video/*" className="absolute inset-0 opacity-0 cursor-pointer" onChange={handleVideoChange} />
+                      <div className="text-center px-2">
+                        <FileVideo className={`mx-auto mb-2 ${videoFile ? 'text-primary' : 'text-muted-foreground'}`} />
+                        <p className="text-xs truncate">{videoFile ? videoFile.name : "Subir nuevo video"}</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Cambiar Miniatura</Label>
+                    <div className="flex items-center justify-center w-full h-32 border-2 border-dashed rounded-xl cursor-pointer bg-muted/30 hover:bg-muted/50 transition-all relative overflow-hidden">
+                      <input type="file" accept="image/*" className="absolute inset-0 opacity-0 cursor-pointer" onChange={handleImageChange} />
+                      <div className="text-center px-2">
+                        <ImageIconLucide className={`mx-auto mb-2 ${imageFile ? 'text-primary' : 'text-muted-foreground'}`} />
+                        <p className="text-xs truncate">{imageFile ? imageFile.name : "Nueva miniatura"}</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <Label>Previsualización</Label>
+                    <div className="aspect-video rounded-xl overflow-hidden border bg-muted flex items-center justify-center relative">
+                      {videoPreviewUrl ? (
+                        <video src={videoPreviewUrl} controls className="w-full h-full object-contain" />
+                      ) : previewUrl ? (
+                        <img src={previewUrl} alt="Preview" className="w-full h-full object-cover" />
+                      ) : (
+                        <ImageIcon className="w-12 h-12 text-muted-foreground" />
+                      )}
+                      {!videoPreviewUrl && (
+                        <Badge variant="secondary" className="absolute top-2 right-2 bg-orange-500 text-white border-none">Sin Video</Badge>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
                     <Label htmlFor="duracion">Duración (segundos)</Label>
                     <div className="relative">
                       <Clock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -203,28 +286,6 @@ function EditContent() {
                         onChange={e => setFormData(prev => ({ ...prev, duracion: e.target.value }))}
                       />
                     </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label>Cambiar Miniatura</Label>
-                    <div className="flex items-center justify-center w-full h-32 border-2 border-dashed rounded-xl cursor-pointer bg-muted/30 hover:bg-muted/50 transition-all relative">
-                      <input type="file" accept="image/*" className="absolute inset-0 opacity-0 cursor-pointer" onChange={handleImageChange} />
-                      <div className="text-center px-2">
-                        <ImageIconLucide className={`mx-auto mb-2 ${imageFile ? 'text-primary' : 'text-muted-foreground'}`} />
-                        <p className="text-xs truncate">{imageFile ? imageFile.name : "Seleccionar imagen"}</p>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Vista Previa Miniatura</Label>
-                  <div className="aspect-video rounded-xl overflow-hidden border bg-muted flex items-center justify-center">
-                    {previewUrl ? (
-                      <img src={previewUrl} alt="Preview" className="w-full h-full object-cover" />
-                    ) : (
-                      <ImageIcon className="w-12 h-12 text-muted-foreground" />
-                    )}
                   </div>
                 </div>
               </div>

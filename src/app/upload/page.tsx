@@ -17,13 +17,15 @@ import {
   PlusCircle,
   FolderOpen,
   Trash2,
-  Calendar
+  Calendar,
+  Clock9
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
 import {
   Select,
   SelectContent,
@@ -93,6 +95,7 @@ function UploadContent() {
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [videoPreview, setVideoPreview] = useState<string | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [uploadLater, setUploadLater] = useState(false);
   
   const [fileError, setFileError] = useState<string | null>(null);
   const [formData, setFormData] = useState({
@@ -100,7 +103,7 @@ function UploadContent() {
     moduloId: "",
     titulo: "",
     descripcion: "",
-    duracion: "",
+    duracion: "0",
   });
 
   useEffect(() => {
@@ -208,10 +211,10 @@ function UploadContent() {
       fecha: new Date().toLocaleString()
     };
 
-    const updatedDrafts = [newDraft, ...drafts].slice(0, 10); // Límite de 10 borradores
+    const updatedDrafts = [newDraft, ...drafts].slice(0, 10);
     setDrafts(updatedDrafts);
     localStorage.setItem(DRAFTS_KEY, JSON.stringify(updatedDrafts));
-    toast({ title: "Borrador guardado", description: "Puedes recuperarlo en el menú de borradores." });
+    toast({ title: "Borrador guardado" });
   };
 
   const handleLoadDraft = (draft: Borrador) => {
@@ -220,7 +223,7 @@ function UploadContent() {
       descripcion: draft.descripcion,
       categoriaId: draft.categoriaId,
       moduloId: draft.moduloId,
-      duracion: formData.duracion // Mantener duración si ya hay video
+      duracion: formData.duracion
     });
     setShowDraftsDialog(false);
     toast({ title: "Borrador cargado" });
@@ -235,8 +238,13 @@ function UploadContent() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.moduloId || !formData.titulo || !videoFile) {
-      toast({ variant: "destructive", title: "Campos requeridos", description: "Por favor completa el formulario y selecciona un video." });
+    if (!formData.moduloId || !formData.titulo) {
+      toast({ variant: "destructive", title: "Campos requeridos", description: "Por favor selecciona categoría, módulo y un título." });
+      return;
+    }
+
+    if (!uploadLater && !videoFile) {
+      toast({ variant: "destructive", title: "Video requerido", description: "Selecciona un video o activa 'Cargar más tarde'." });
       return;
     }
 
@@ -249,11 +257,15 @@ function UploadContent() {
       const cleanMod = mod?.nombre.replace(/\s/g, '_') || 'Sin_Modulo';
       const timestamp = Date.now();
 
-      const videoFileName = `${timestamp}_${videoFile.name.replace(/\s/g, '_')}`;
-      const videoPath = `${cleanCat}/${cleanMod}/videos/${videoFileName}`;
-      const { error: videoError } = await supabasePROD.storage.from('videos-tutoriales').upload(videoPath, videoFile);
-      if (videoError) throw videoError;
-      const { data: { publicUrl: videoUrl } } = supabasePROD.storage.from('videos-tutoriales').getPublicUrl(videoPath);
+      let videoUrl = "";
+      if (videoFile && !uploadLater) {
+        const videoFileName = `${timestamp}_${videoFile.name.replace(/\s/g, '_')}`;
+        const videoPath = `${cleanCat}/${cleanMod}/videos/${videoFileName}`;
+        const { error: videoError } = await supabasePROD.storage.from('videos-tutoriales').upload(videoPath, videoFile);
+        if (videoError) throw videoError;
+        const { data: { publicUrl } } = supabasePROD.storage.from('videos-tutoriales').getPublicUrl(videoPath);
+        videoUrl = publicUrl;
+      }
 
       let miniaturaUrl = `https://picsum.photos/seed/${Math.random()}/600/400`;
       if (imageFile) {
@@ -269,7 +281,7 @@ function UploadContent() {
         modulo_id: parseInt(formData.moduloId),
         titulo: formData.titulo,
         descripcion: formData.descripcion,
-        url_video: videoUrl,
+        url_video: videoUrl, // Puede ser string vacío si se carga después
         miniatura_url: miniaturaUrl,
         duracion_segundos: parseInt(formData.duracion) || 0,
         orden: 0
@@ -277,7 +289,7 @@ function UploadContent() {
 
       if (dbError) throw dbError;
       
-      toast({ title: "¡Éxito!", description: "El video ha sido registrado correctamente." });
+      toast({ title: "¡Éxito!", description: uploadLater ? "Espacio de proceso creado correctamente." : "El video ha sido registrado correctamente." });
       router.push('/');
     } catch (error: any) {
       toast({ variant: "destructive", title: "Error", description: error.message });
@@ -307,14 +319,14 @@ function UploadContent() {
             <DialogContent className="max-w-md rounded-2xl">
               <DialogHeader>
                 <DialogTitle>Borradores Guardados</DialogTitle>
-                <DialogDescription>Selecciona un borrador para recuperar la información del proceso.</DialogDescription>
+                <DialogDescription>Selecciona un borrador para recuperar la información.</DialogDescription>
               </DialogHeader>
               <ScrollArea className="max-h-[60vh] mt-4 pr-4">
                 <div className="space-y-3">
                   {drafts.length === 0 ? (
                     <div className="text-center py-8 text-muted-foreground">
                       <ClipboardCheck className="w-12 h-12 mx-auto mb-2 opacity-20" />
-                      <p>No tienes borradores guardados.</p>
+                      <p>No hay borradores.</p>
                     </div>
                   ) : (
                     drafts.map((draft) => (
@@ -336,8 +348,7 @@ function UploadContent() {
                         </div>
                         <p className="text-xs text-muted-foreground line-clamp-2 mb-2">{draft.descripcion || "Sin descripción"}</p>
                         <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
-                          <Calendar className="w-3 h-3" />
-                          {draft.fecha}
+                          <Calendar className="w-3 h-3" /> {draft.fecha}
                         </div>
                       </div>
                     ))
@@ -354,9 +365,9 @@ function UploadContent() {
               <div className="p-2 bg-primary/10 rounded-lg">
                 <Video className="w-6 h-6 text-primary" />
               </div>
-              <CardTitle className="text-2xl">Subir Nuevo Proceso</CardTitle>
+              <CardTitle className="text-2xl">Nuevo Proceso</CardTitle>
             </div>
-            <CardDescription>Completa la información para registrar el tutorial.</CardDescription>
+            <CardDescription>Crea un espacio de trabajo o sube un video completo.</CardDescription>
           </CardHeader>
           
           <form onSubmit={handleSubmit}>
@@ -369,6 +380,16 @@ function UploadContent() {
                 </Alert>
               )}
 
+              <div className="flex items-center justify-between p-4 bg-primary/5 rounded-2xl border border-primary/10">
+                <div className="space-y-1">
+                  <Label className="flex items-center gap-2 text-primary font-bold">
+                    <Clock9 className="w-4 h-4" /> Cargar video más tarde
+                  </Label>
+                  <p className="text-xs text-muted-foreground">Crea un "espacio" con título y descripción para subir el video después.</p>
+                </div>
+                <Switch checked={uploadLater} onCheckedChange={setUploadLater} />
+              </div>
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-2">
                   <Label>Categoría</Label>
@@ -379,8 +400,8 @@ function UploadContent() {
                     <SelectContent>
                       {categories.map(c => <SelectItem key={c.id} value={c.id.toString()}>{c.nombre}</SelectItem>)}
                       <SelectSeparator />
-                      <SelectItem value="ADD_NEW_CATEGORY" className="text-primary font-medium focus:bg-primary/10 focus:text-primary">
-                        <div className="flex items-center gap-2"><PlusCircle className="w-4 h-4" />Crear nueva categoría...</div>
+                      <SelectItem value="ADD_NEW_CATEGORY" className="text-primary font-medium focus:bg-primary/10">
+                        <div className="flex items-center gap-2"><PlusCircle className="w-4 h-4" />Crear nueva...</div>
                       </SelectItem>
                     </SelectContent>
                   </Select>
@@ -394,8 +415,8 @@ function UploadContent() {
                     <SelectContent>
                       {modules.map(m => <SelectItem key={m.id} value={m.id.toString()}>{m.nombre}</SelectItem>)}
                       <SelectSeparator />
-                      <SelectItem value="ADD_NEW_MODULE" className="text-primary font-medium focus:bg-primary/10 focus:text-primary">
-                        <div className="flex items-center gap-2"><PlusCircle className="w-4 h-4" />Crear nuevo módulo...</div>
+                      <SelectItem value="ADD_NEW_MODULE" className="text-primary font-medium focus:bg-primary/10">
+                        <div className="flex items-center gap-2"><PlusCircle className="w-4 h-4" />Crear nuevo...</div>
                       </SelectItem>
                     </SelectContent>
                   </Select>
@@ -409,7 +430,7 @@ function UploadContent() {
                   <Input 
                     id="titulo"
                     className="pl-10 rounded-xl"
-                    placeholder="Ej: Reclutamiento de Personal"
+                    placeholder="Nombre del proceso"
                     value={formData.titulo}
                     onChange={e => setFormData(prev => ({ ...prev, titulo: e.target.value }))}
                     required
@@ -417,13 +438,13 @@ function UploadContent() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+              <div className={`grid grid-cols-1 md:grid-cols-2 gap-8 transition-opacity duration-300 ${uploadLater ? 'opacity-40 grayscale pointer-events-none' : 'opacity-100'}`}>
                 <div className="space-y-4">
                   <div className="space-y-2">
                     <Label>Archivo de Video</Label>
                     <div className="flex items-center justify-center w-full h-32 border-2 border-dashed rounded-xl cursor-pointer bg-muted/30 hover:bg-muted/50 transition-all relative overflow-hidden">
                       {videoPreview && <video src={videoPreview} className="absolute inset-0 w-full h-full object-cover opacity-30" />}
-                      <input type="file" accept="video/*" className="absolute inset-0 opacity-0 cursor-pointer" onChange={handleVideoChange} />
+                      <input type="file" accept="video/*" className="absolute inset-0 opacity-0 cursor-pointer" onChange={handleVideoChange} disabled={uploadLater} />
                       <div className="text-center px-2 z-10">
                         <FileVideo className={`mx-auto mb-2 ${videoFile ? 'text-primary' : 'text-muted-foreground'}`} />
                         <p className="text-xs truncate max-w-[200px] font-medium">{videoFile ? videoFile.name : "Seleccionar Video"}</p>
@@ -455,7 +476,7 @@ function UploadContent() {
                       ) : (
                         <div className="text-center text-muted-foreground p-4">
                           <Video className="w-8 h-8 mx-auto mb-2 opacity-20" />
-                          <p className="text-xs">Selecciona un archivo para ver la previa</p>
+                          <p className="text-xs">Previa de archivos</p>
                         </div>
                       )}
                     </div>
@@ -470,7 +491,7 @@ function UploadContent() {
                   <Textarea 
                     id="descripcion"
                     className="pl-10 rounded-xl min-h-[100px]"
-                    placeholder="Detalles sobre este proceso..."
+                    placeholder="¿De qué trata este proceso?"
                     value={formData.descripcion}
                     onChange={e => setFormData(prev => ({ ...prev, descripcion: e.target.value }))}
                   />
@@ -486,7 +507,6 @@ function UploadContent() {
                     readOnly
                     className="pl-10 rounded-xl bg-muted/50 cursor-not-allowed"
                     value={formData.duracion}
-                    placeholder="Auto-detectada"
                   />
                 </div>
               </div>
@@ -494,19 +514,18 @@ function UploadContent() {
             
             <CardFooter className="flex flex-col sm:flex-row justify-between gap-3 pt-6 border-t">
               <Button type="button" variant="outline" onClick={handleSaveDraft} className="rounded-xl w-full sm:w-auto">
-                <ClipboardCheck className="mr-2 h-4 w-4" />
-                Guardar como Borrador
+                <ClipboardCheck className="mr-2 h-4 w-4" /> Guardar Borrador
               </Button>
               
               <div className="flex gap-3 w-full sm:w-auto">
                 <Button type="button" variant="ghost" onClick={() => router.back()} className="rounded-xl flex-1 sm:flex-none">
                   Cancelar
                 </Button>
-                <Button type="submit" disabled={loading || !videoFile} className="rounded-xl px-8 shadow-lg shadow-primary/20 flex-1 sm:flex-none">
+                <Button type="submit" disabled={loading} className="rounded-xl px-8 shadow-lg shadow-primary/20 flex-1 sm:flex-none">
                   {loading ? (
                     <><Loader2 className="animate-spin mr-2 h-4 w-4" /> Guardando...</>
                   ) : (
-                    <><Save className="mr-2 h-4 w-4" /> Guardar Proceso</>
+                    <><Save className="mr-2 h-4 w-4" /> {uploadLater ? 'Crear Espacio' : 'Guardar Proceso'}</>
                   )}
                 </Button>
               </div>
