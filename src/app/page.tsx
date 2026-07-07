@@ -25,7 +25,8 @@ import {
   UploadCloud,
   FileVideo,
   Monitor,
-  Settings
+  Settings,
+  Filter
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -49,6 +50,7 @@ import { useToast } from "@/hooks/use-toast";
 import { supabasePROD } from "@/lib/supabase";
 import { AdminGuard } from "@/components/admin-guard";
 import { cn } from "@/lib/utils";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 interface Tutorial {
   id: number;
@@ -83,6 +85,7 @@ function TutorialsContent() {
   const [loadingCategories, setLoadingCategories] = useState(true);
   const [search, setSearch] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("all");
+  const [selectedType, setSelectedType] = useState<string>("all");
   const [viewingTutorial, setViewingTutorial] = useState<Tutorial | null>(null);
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [showHelp, setShowHelp] = useState(false);
@@ -148,13 +151,16 @@ function TutorialsContent() {
       const matchesSearch = t.titulo.toLowerCase().includes(search.toLowerCase()) || 
                            t.descripcion.toLowerCase().includes(search.toLowerCase());
       const matchesCategory = selectedCategory === "all" || t.modulo.categoria.nombre === selectedCategory;
-      return matchesSearch && matchesCategory;
+      const matchesType = selectedType === "all" || t.tipo_contenido === selectedType;
+      return matchesSearch && matchesCategory && matchesType;
     });
-  }, [tutorials, search, selectedCategory]);
+  }, [tutorials, search, selectedCategory, selectedType]);
 
   const groupedTutorials = useMemo(() => {
     const groups: Record<string, Tutorial[]> = {};
     filteredTutorials.forEach(t => {
+      // Si estamos viendo "Todos", agrupamos por categoría. 
+      // Si estamos en una categoría específica, agrupamos por módulo.
       const groupName = selectedCategory === "all" 
         ? (t.modulo?.categoria?.nombre || "General")
         : (t.modulo?.nombre || "General");
@@ -170,11 +176,9 @@ function TutorialsContent() {
       const { data: { user } } = await supabasePROD.auth.getUser();
       if (!user) throw new Error("Usuario no autenticado");
 
-      // 1. Soft delete
       const { error } = await supabasePROD.from('tutoriales').update({ activo: false }).eq('id', id);
       if (error) throw error;
 
-      // 2. Log Auditoría
       await supabasePROD.from('auditoria_tutoriales').insert([{
         tutorial_id: id,
         usuario_id: user.id,
@@ -310,31 +314,84 @@ function TutorialsContent() {
         </div>
       </header>
 
-      <div className="border-b bg-muted/20 overflow-hidden">
-        <div className="container mx-auto px-6 py-2 overflow-x-auto no-scrollbar flex gap-2 items-center">
-          <Button variant={selectedCategory === "all" ? "default" : "ghost"} size="sm" className="rounded-full shrink-0" onClick={() => setSelectedCategory("all")}>Todos</Button>
-          {loadingCategories ? <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" /> : categories.map(cat => (
-            <Button key={cat} variant={selectedCategory === cat ? "default" : "ghost"} size="sm" className="rounded-full shrink-0" onClick={() => setSelectedCategory(cat)}>{cat}</Button>
-          ))}
+      <div className="border-b bg-muted/20">
+        <div className="container mx-auto px-6 py-2 flex flex-col md:flex-row items-center gap-4">
+          <div className="overflow-x-auto no-scrollbar flex gap-2 items-center flex-1 w-full md:w-auto">
+            <Button variant={selectedCategory === "all" ? "default" : "ghost"} size="sm" className="rounded-full shrink-0" onClick={() => setSelectedCategory("all")}>Todas las Categorías</Button>
+            {loadingCategories ? (
+              <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+            ) : (
+              categories.map(cat => (
+                <Button key={cat} variant={selectedCategory === cat ? "default" : "ghost"} size="sm" className="rounded-full shrink-0" onClick={() => setSelectedCategory(cat)}>{cat}</Button>
+              ))
+            )}
+          </div>
+          
+          <div className="shrink-0 flex items-center bg-card rounded-xl p-1 shadow-sm border">
+            <Button 
+              variant={selectedType === "all" ? "secondary" : "ghost"} 
+              size="sm" 
+              className="rounded-lg px-3 h-8 text-[10px] font-bold uppercase tracking-wider" 
+              onClick={() => setSelectedType("all")}
+            >
+              Todos
+            </Button>
+            <Button 
+              variant={selectedType === "software" ? "primary" : "ghost"} 
+              size="sm" 
+              className={cn(
+                "rounded-lg px-3 h-8 text-[10px] font-bold uppercase tracking-wider gap-1.5",
+                selectedType === "software" && "bg-primary text-primary-foreground shadow-sm"
+              )} 
+              onClick={() => setSelectedType("software")}
+            >
+              <Monitor className="w-3 h-3" /> Software
+            </Button>
+            <Button 
+              variant={selectedType === "operacion" ? "accent" : "ghost"} 
+              size="sm" 
+              className={cn(
+                "rounded-lg px-3 h-8 text-[10px] font-bold uppercase tracking-wider gap-1.5",
+                selectedType === "operacion" && "bg-accent text-accent-foreground shadow-sm"
+              )} 
+              onClick={() => setSelectedType("operacion")}
+            >
+              <Settings className="w-3 h-3" /> Operativo
+            </Button>
+          </div>
         </div>
       </div>
 
       <main className="container mx-auto px-6 py-8 flex-1">
         <div className="mb-12 space-y-1">
-          <h2 className="text-3xl font-extrabold tracking-tight text-foreground flex items-center gap-3">
-            {selectedCategory === "all" ? "Todos los Procesos" : `Procesos de ${selectedCategory}`}
-            {!loading && <Badge variant="secondary" className="ml-2 font-mono">{filteredTutorials.length}</Badge>}
-          </h2>
+          <div className="flex items-center gap-3">
+            <h2 className="text-3xl font-extrabold tracking-tight text-foreground">
+              {selectedCategory === "all" ? "Todos los Procesos" : `Procesos de ${selectedCategory}`}
+            </h2>
+            {selectedType !== "all" && (
+              <Badge variant="secondary" className="rounded-lg px-3 py-1 font-bold uppercase tracking-widest text-[10px] bg-primary/20 text-primary border-none">
+                Filtrado por: {selectedType === 'software' ? 'Software' : 'Operativo'}
+              </Badge>
+            )}
+            {!loading && <Badge variant="outline" className="font-mono text-sm">{filteredTutorials.length}</Badge>}
+          </div>
           <p className="text-muted-foreground flex items-center gap-2 text-sm">
             <Info className="w-4 h-4" /> 
-            {selectedCategory === "all" ? "Vista general por categorías del sistema." : "Listado detallado por módulos de trabajo."}
+            {selectedCategory === "all" ? "Vista general organizada por departamentos." : "Listado detallado de los módulos de trabajo."}
           </p>
         </div>
 
         {loading ? (
           <div className="flex flex-col items-center justify-center py-20"><Loader2 className="w-10 h-10 animate-spin text-primary" /></div>
         ) : filteredTutorials.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-20 text-center"><Search className="w-12 h-12 text-muted-foreground mb-4" /><h3 className="text-xl font-semibold">Sin resultados</h3></div>
+          <div className="flex flex-col items-center justify-center py-20 text-center">
+            <div className="p-6 bg-muted/50 rounded-full mb-4">
+              <Filter className="w-12 h-12 text-muted-foreground/30" />
+            </div>
+            <h3 className="text-xl font-semibold">Sin resultados</h3>
+            <p className="text-muted-foreground max-w-xs mx-auto mt-2">No encontramos procesos que coincidan con los filtros seleccionados.</p>
+            <Button variant="link" className="mt-4" onClick={() => { setSearch(""); setSelectedCategory("all"); setSelectedType("all"); }}>Limpiar todos los filtros</Button>
+          </div>
         ) : (
           <div className="space-y-16">
             {Object.entries(groupedTutorials).map(([groupName, groupTutorials]) => (
@@ -395,7 +452,7 @@ function TutorialsContent() {
                         <div className="flex justify-between items-start gap-2">
                           <div className="flex flex-col gap-1">
                             <Badge variant="secondary" className="text-[10px] uppercase font-bold w-fit bg-primary/10 text-primary border-none">
-                              {selectedCategory === "all" ? tutorial.modulo?.nombre : tutorial.modulo?.categoria?.nombre}
+                              {selectedCategory === "all" ? (tutorial.modulo?.nombre || "General") : (tutorial.modulo?.categoria?.nombre || "General")}
                             </Badge>
                           </div>
                           <DropdownMenu>
@@ -470,7 +527,7 @@ function TutorialsContent() {
                   Clasificación Inteligente <CheckCircle2 className="w-3 h-3 text-primary" />
                 </h4>
                 <p className="text-sm text-muted-foreground leading-relaxed">
-                  Clasifica tus videos como <strong>Software</strong> u <strong>Operación</strong> para que tus compañeros encuentren lo que necesitan más rápido.
+                  Clasifica tus videos como <strong>Software</strong> u <strong>Operativo</strong> para que tus compañeros encuentren lo que necesitan más rápido.
                 </p>
               </div>
             </div>
