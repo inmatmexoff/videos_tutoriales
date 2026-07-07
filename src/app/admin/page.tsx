@@ -9,7 +9,11 @@ import {
   Save, 
   Loader2, 
   Tag,
-  Video
+  Video,
+  Edit2,
+  Trash2,
+  X,
+  Check
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -30,6 +34,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
 
 export default function AdminSettingsPage() {
   return (
@@ -43,19 +49,33 @@ function AdminContent() {
   const router = useRouter();
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
+  const [fetching, setFetching] = useState(true);
   const [categories, setCategories] = useState<any[]>([]);
   const [showModuleDialog, setShowModuleDialog] = useState(false);
   
+  // Estados para creación
   const [catData, setCatData] = useState({ nombre: "", descripcion: "" });
   const [modData, setModData] = useState({ categoriaId: "", nombre: "", descripcion: "" });
 
+  // Estados para edición de categoría
+  const [editingCatId, setEditingCatId] = useState<number | null>(null);
+  const [editCatData, setEditCatData] = useState({ nombre: "", descripcion: "" });
+
   const fetchCategories = async () => {
-    const { data } = await supabasePROD
-      .from('categorias_tutoriales')
-      .select('*')
-      .eq('activo', true)
-      .order('orden', { ascending: true });
-    setCategories(data || []);
+    try {
+      setFetching(true);
+      const { data, error } = await supabasePROD
+        .from('categorias_tutoriales')
+        .select('*')
+        .eq('activo', true)
+        .order('orden', { ascending: true });
+      if (error) throw error;
+      setCategories(data || []);
+    } catch (error: any) {
+      toast({ variant: "destructive", title: "Error al cargar", description: error.message });
+    } finally {
+      setFetching(false);
+    }
   };
 
   useEffect(() => {
@@ -66,12 +86,16 @@ function AdminContent() {
     e.preventDefault();
     setLoading(true);
     try {
+      const { data: { user } } = await supabasePROD.auth.getUser();
+      if (!user) throw new Error("No autenticado");
+
       const { error } = await supabasePROD
         .from('categorias_tutoriales')
         .insert([{
           nombre: catData.nombre,
           descripcion: catData.descripcion,
-          orden: 0
+          orden: 0,
+          creado_por: user.id
         }]);
 
       if (error) throw error;
@@ -85,18 +109,63 @@ function AdminContent() {
     }
   };
 
+  const handleEditCategory = async (id: number) => {
+    setLoading(true);
+    try {
+      const { error } = await supabasePROD
+        .from('categorias_tutoriales')
+        .update({
+          nombre: editCatData.nombre,
+          descripcion: editCatData.descripcion
+        })
+        .eq('id', id);
+
+      if (error) throw error;
+      toast({ title: "Categoría actualizada" });
+      setEditingCatId(null);
+      fetchCategories();
+    } catch (error: any) {
+      toast({ variant: "destructive", title: "Error", description: error.message });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeleteCategory = async (id: number) => {
+    setLoading(true);
+    try {
+      // Soft delete para mantener integridad de tutoriales vinculados
+      const { error } = await supabasePROD
+        .from('categorias_tutoriales')
+        .update({ activo: false })
+        .eq('id', id);
+
+      if (error) throw error;
+      toast({ title: "Categoría eliminada" });
+      fetchCategories();
+    } catch (error: any) {
+      toast({ variant: "destructive", title: "Error", description: error.message });
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleCreateModule = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!modData.categoriaId) return;
     setLoading(true);
     try {
+      const { data: { user } } = await supabasePROD.auth.getUser();
+      if (!user) throw new Error("No autenticado");
+
       const { error } = await supabasePROD
         .from('modulos_tutoriales')
         .insert([{
           categoria_id: parseInt(modData.categoriaId),
           nombre: modData.nombre,
           descripcion: modData.descripcion,
-          orden: 0
+          orden: 0,
+          creado_por: user.id
         }]);
 
       if (error) throw error;
@@ -108,6 +177,11 @@ function AdminContent() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const startEditing = (cat: any) => {
+    setEditingCatId(cat.id);
+    setEditCatData({ nombre: cat.nombre, descripcion: cat.descripcion || "" });
   };
 
   return (
@@ -130,7 +204,7 @@ function AdminContent() {
             <TabsTrigger value="modulos" className="rounded-lg">Módulos</TabsTrigger>
           </TabsList>
 
-          <TabsContent value="categorias" className="mt-6">
+          <TabsContent value="categorias" className="mt-6 space-y-6">
             <Card className="border-none shadow-xl bg-card/50 backdrop-blur-sm">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
@@ -169,6 +243,75 @@ function AdminContent() {
                   </Button>
                 </CardFooter>
               </form>
+            </Card>
+
+            <Card className="border-none shadow-xl bg-card/50 backdrop-blur-sm">
+              <CardHeader>
+                <CardTitle className="text-lg">Listado de Categorías</CardTitle>
+                <CardDescription>Administra las categorías existentes.</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {fetching ? (
+                  <div className="flex justify-center py-8"><Loader2 className="animate-spin text-primary" /></div>
+                ) : categories.length === 0 ? (
+                  <p className="text-center py-8 text-muted-foreground">No hay categorías registradas.</p>
+                ) : (
+                  <div className="space-y-3">
+                    {categories.map((cat) => (
+                      <div key={cat.id} className="flex items-center justify-between p-4 border rounded-2xl bg-background/50 group transition-all hover:border-primary/50">
+                        {editingCatId === cat.id ? (
+                          <div className="flex-1 space-y-3 mr-4">
+                            <Input 
+                              value={editCatData.nombre} 
+                              onChange={e => setEditCatData(p => ({ ...p, nombre: e.target.value }))}
+                              className="rounded-lg h-8"
+                              placeholder="Nombre"
+                            />
+                            <Input 
+                              value={editCatData.descripcion} 
+                              onChange={e => setEditCatData(p => ({ ...p, descripcion: e.target.value }))}
+                              className="rounded-lg h-8"
+                              placeholder="Descripción"
+                            />
+                          </div>
+                        ) : (
+                          <div className="flex flex-col">
+                            <span className="font-bold">{cat.nombre}</span>
+                            <span className="text-xs text-muted-foreground">{cat.descripcion || "Sin descripción"}</span>
+                          </div>
+                        )}
+
+                        <div className="flex items-center gap-2">
+                          {editingCatId === cat.id ? (
+                            <>
+                              <Button size="icon" variant="ghost" className="h-8 w-8 text-green-600" onClick={() => handleEditCategory(cat.id)}>
+                                <Check className="h-4 w-4" />
+                              </Button>
+                              <Button size="icon" variant="ghost" className="h-8 w-8 text-muted-foreground" onClick={() => setEditingCatId(null)}>
+                                <X className="h-4 w-4" />
+                              </Button>
+                            </>
+                          ) : (
+                            <>
+                              <Button size="icon" variant="ghost" className="h-8 w-8 opacity-0 group-hover:opacity-100" onClick={() => startEditing(cat)}>
+                                <Edit2 className="h-4 w-4" />
+                              </Button>
+                              <Button 
+                                size="icon" 
+                                variant="ghost" 
+                                className="h-8 w-8 text-destructive opacity-0 group-hover:opacity-100" 
+                                onClick={() => handleDeleteCategory(cat.id)}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
             </Card>
           </TabsContent>
 
