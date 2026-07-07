@@ -19,7 +19,8 @@ import {
   LogOut,
   HelpCircle,
   ChevronRight,
-  CheckCircle2
+  CheckCircle2,
+  FolderOpen
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -108,7 +109,6 @@ function TutorialsContent() {
       const { data: { user } } = await supabasePROD.auth.getUser();
       setUserEmail(user?.email || null);
       
-      // Mostrar ayuda automáticamente si es la primera vez en esta sesión
       const helpShown = sessionStorage.getItem('welcome_modal_shown');
       if (!helpShown) {
         setShowHelp(true);
@@ -147,12 +147,16 @@ function TutorialsContent() {
   const groupedTutorials = useMemo(() => {
     const groups: Record<string, Tutorial[]> = {};
     filteredTutorials.forEach(t => {
-      const moduleName = t.modulo?.nombre || "General";
-      if (!groups[moduleName]) groups[moduleName] = [];
-      groups[moduleName].push(t);
+      // Si el filtro es "Todos", agrupamos por Categoría. Si no, agrupamos por Módulo.
+      const groupName = selectedCategory === "all" 
+        ? (t.modulo?.categoria?.nombre || "General")
+        : (t.modulo?.nombre || "General");
+
+      if (!groups[groupName]) groups[groupName] = [];
+      groups[groupName].push(t);
     });
     return groups;
-  }, [filteredTutorials]);
+  }, [filteredTutorials, selectedCategory]);
 
   const handleDelete = async (id: number) => {
     try {
@@ -225,7 +229,7 @@ function TutorialsContent() {
               className="rounded-xl border-primary/20 hover:bg-primary/5 gap-2 px-4 h-10"
             >
               <Layers className="w-4 h-4 text-primary" />
-              <span className="hidden sm:inline font-medium text-xs">Estructura</span>
+              <span className="hidden sm:inline font-medium text-xs">Gestionar Estructura</span>
             </Button>
             
             <Button onClick={() => router.push('/upload')} className="rounded-xl shadow-lg shadow-primary/20 h-10 px-4">
@@ -244,9 +248,9 @@ function TutorialsContent() {
                 <HelpCircle className="h-4 w-4" />
               </Button>
               {userEmail && (
-                <span className="text-xs font-medium text-muted-foreground hidden sm:block px-2">
+                <Badge variant="secondary" className="hidden sm:flex rounded-full px-3 py-1 bg-primary/10 text-primary border-none text-[10px]">
                   {userEmail}
-                </span>
+                </Badge>
               )}
               <Button 
                 variant="ghost" 
@@ -277,7 +281,10 @@ function TutorialsContent() {
             {selectedCategory === "all" ? "Todos los Procesos" : `Procesos de ${selectedCategory}`}
             {!loading && <Badge variant="secondary" className="ml-2 font-mono">{filteredTutorials.length}</Badge>}
           </h2>
-          <p className="text-muted-foreground flex items-center gap-2"><Info className="w-4 h-4" /> Explora las guías del sistema divididas por módulos.</p>
+          <p className="text-muted-foreground flex items-center gap-2">
+            <Info className="w-4 h-4" /> 
+            {selectedCategory === "all" ? "Vista general por categorías del sistema." : "Listado detallado por módulos de trabajo."}
+          </p>
         </div>
 
         {loading ? (
@@ -286,19 +293,19 @@ function TutorialsContent() {
           <div className="flex flex-col items-center justify-center py-20 text-center"><Search className="w-12 h-12 text-muted-foreground mb-4" /><h3 className="text-xl font-semibold">Sin resultados</h3></div>
         ) : (
           <div className="space-y-16">
-            {Object.entries(groupedTutorials).map(([moduleName, moduleTutorials]) => (
-              <div key={moduleName} className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+            {Object.entries(groupedTutorials).map(([groupName, groupTutorials]) => (
+              <div key={groupName} className="animate-in fade-in slide-in-from-bottom-4 duration-500">
                 <div className="flex items-center gap-4 mb-6">
                   <div className="bg-primary/10 p-2 rounded-lg">
-                    <Layers className="w-5 h-5 text-primary" />
+                    {selectedCategory === "all" ? <FolderOpen className="w-5 h-5 text-primary" /> : <Layers className="w-5 h-5 text-primary" />}
                   </div>
-                  <h3 className="text-xl font-bold text-foreground/90">{moduleName}</h3>
+                  <h3 className="text-xl font-bold text-foreground/90 uppercase tracking-tight">{groupName}</h3>
                   <Separator className="flex-1" />
-                  <Badge variant="outline" className="font-mono">{moduleTutorials.length}</Badge>
+                  <Badge variant="outline" className="font-mono">{groupTutorials.length}</Badge>
                 </div>
                 
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                  {moduleTutorials.map((tutorial) => (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
+                  {groupTutorials.map((tutorial) => (
                     <Card key={tutorial.id} className="group overflow-hidden rounded-2xl border-none ring-1 ring-border bg-card/50 hover:ring-primary/50 transition-all duration-300">
                       <div className="relative aspect-video overflow-hidden">
                         <img 
@@ -315,10 +322,12 @@ function TutorialsContent() {
                           <Clock className="w-3 h-3" /> {formatDuration(tutorial.duracion_segundos)}
                         </div>
                       </div>
-                      <CardHeader className="p-4">
+                      <CardHeader className="p-5">
                         <div className="flex justify-between items-start gap-2">
                           <div className="flex flex-col gap-1">
-                            <Badge variant="secondary" className="text-[10px] uppercase font-bold w-fit bg-primary/10 text-primary border-none">{tutorial.modulo?.categoria?.nombre}</Badge>
+                            <Badge variant="secondary" className="text-[10px] uppercase font-bold w-fit bg-primary/10 text-primary border-none">
+                              {selectedCategory === "all" ? tutorial.modulo?.nombre : tutorial.modulo?.categoria?.nombre}
+                            </Badge>
                           </div>
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
@@ -347,7 +356,6 @@ function TutorialsContent() {
         )}
       </main>
 
-      {/* Modal de Ayuda / Pasos iniciales */}
       <Dialog open={showHelp} onOpenChange={setShowHelp}>
         <DialogContent className="max-w-md rounded-3xl p-8 border-none shadow-2xl overflow-hidden">
           <div className="absolute top-0 right-0 w-32 h-32 bg-primary/5 rounded-full -mr-16 -mt-16" />
@@ -369,7 +377,7 @@ function TutorialsContent() {
                   Gestionar Estructura <Layers className="w-3 h-3 text-primary" />
                 </h4>
                 <p className="text-sm text-muted-foreground leading-relaxed">
-                  Primero ingresa al botón de <strong>Estructura</strong>. En caso de no existir una categoría y un módulo (subcategoría) para tu proceso, créalos en esa sección.
+                  Primero ingresa al botón de <strong>Gestionar Estructura</strong>. En caso de no existir una categoría y un módulo para tu proceso, créalos en esa sección.
                 </p>
               </div>
             </div>
@@ -381,7 +389,7 @@ function TutorialsContent() {
                   Subir Nuevo Proceso <Plus className="w-3 h-3 text-primary" />
                 </h4>
                 <p className="text-sm text-muted-foreground leading-relaxed">
-                  Después, utiliza el botón <strong>Nuevo</strong> para subir el video del tutorial y asociarlo a la estructura (categoría y módulo) que definiste previamente.
+                  Después, utiliza el botón <strong>Nuevo</strong> para subir el video del tutorial y asociarlo a la estructura definida previamente.
                 </p>
               </div>
             </div>
@@ -393,7 +401,7 @@ function TutorialsContent() {
                   Organización Automática <CheckCircle2 className="w-3 h-3 text-primary" />
                 </h4>
                 <p className="text-sm text-muted-foreground leading-relaxed">
-                  ¡Listo! Tu video aparecerá automáticamente organizado por módulos en la pantalla principal para que todo tu equipo pueda consultarlo.
+                  ¡Listo! Tu video aparecerá organizado por categorías en la vista general o por módulos al filtrar.
                 </p>
               </div>
             </div>
