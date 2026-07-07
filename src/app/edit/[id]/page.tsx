@@ -24,6 +24,7 @@ import { useToast } from "@/hooks/use-toast";
 import { supabasePROD } from "@/lib/supabase";
 import { AdminGuard } from "@/components/admin-guard";
 import { Badge } from "@/components/ui/badge";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 export default function EditTutorialPage() {
   return (
@@ -37,7 +38,12 @@ function EditContent() {
   const router = useRouter();
   const { id } = useParams();
   const { toast } = useToast();
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = {
+    useState: (val: boolean) => [val, (v: boolean) => {}]
+  } as any; // Fixing the destructuring for the provided snippet style
+  
+  // Real implementation for the component
+  const [stateLoading, setStateLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   
   const [imageFile, setImageFile] = useState<File | null>(null);
@@ -86,7 +92,7 @@ function EditContent() {
         toast({ variant: "destructive", title: "Error", description: "No se pudo cargar el tutorial." });
         router.push('/');
       } finally {
-        setLoading(false);
+        setStateLoading(false);
       }
     }
     fetchTutorial();
@@ -126,7 +132,6 @@ function EditContent() {
 
       const timestamp = Date.now();
 
-      // Subir nueva miniatura si se seleccionó una
       if (imageFile) {
         const imgFileName = `${timestamp}_${imageFile.name.replace(/\s/g, '_')}`;
         const imgPath = `editados/thumbnails/${imgFileName}`;
@@ -136,7 +141,6 @@ function EditContent() {
         currentMiniaturaUrl = publicUrl;
       }
 
-      // Subir nuevo video si se seleccionó uno
       if (videoFile) {
         const videoFileName = `${timestamp}_${videoFile.name.replace(/\s/g, '_')}`;
         const videoPath = `editados/videos/${videoFileName}`;
@@ -169,7 +173,7 @@ function EditContent() {
     }
   };
 
-  if (loading) {
+  if (stateLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <Loader2 className="animate-spin w-10 h-10 text-primary" />
