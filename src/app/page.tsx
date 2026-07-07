@@ -48,6 +48,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { supabasePROD } from "@/lib/supabase";
 import { AdminGuard } from "@/components/admin-guard";
+import { cn } from "@/lib/utils";
 
 interface Tutorial {
   id: number;
@@ -229,8 +230,13 @@ function TutorialsContent() {
               <div className="space-y-2">
                 <div className="flex items-center gap-2">
                   <h1 className="text-3xl font-bold">{viewingTutorial.titulo}</h1>
-                  <Badge variant="secondary" className="bg-primary/5 text-primary border-none">
-                    {viewingTutorial.tipo_contenido === 'software' ? <Monitor className="w-3 h-3 mr-1" /> : <Settings className="w-3 h-3 mr-1" />}
+                  <Badge 
+                    className={cn(
+                      "border-none rounded-lg flex items-center gap-1.5 px-3 py-1 text-xs font-extrabold uppercase tracking-wider shadow-sm",
+                      viewingTutorial.tipo_contenido === 'software' ? "bg-primary text-primary-foreground" : "bg-accent text-accent-foreground"
+                    )}
+                  >
+                    {viewingTutorial.tipo_contenido === 'software' ? <Monitor className="w-3.5 h-3.5" /> : <Settings className="w-3.5 h-3.5" />}
                     {viewingTutorial.tipo_contenido === 'software' ? 'Software' : 'Operación'}
                   </Badge>
                 </div>
@@ -364,14 +370,19 @@ function TutorialsContent() {
                           </Button>
                         </div>
                         
-                        <div className="absolute top-2 left-2 flex flex-col gap-1">
+                        <div className="absolute top-2 left-2 flex flex-col gap-1.5">
                           {tutorial.es_espacio && (
-                            <Badge className="bg-orange-500 hover:bg-orange-600 border-none rounded-lg flex items-center gap-1 shadow-lg text-[10px]">
-                              <AlertCircle className="w-3 h-3" /> Espacio
+                            <Badge className="bg-orange-600 hover:bg-orange-700 text-white border-none rounded-lg flex items-center gap-1 shadow-lg text-[10px] font-black py-1 px-2">
+                              <AlertCircle className="w-3 h-3" /> ESPACIO
                             </Badge>
                           )}
-                          <Badge className="bg-black/60 backdrop-blur-md border-none rounded-lg flex items-center gap-1 text-[9px] font-bold uppercase tracking-wider">
-                            {tutorial.tipo_contenido === 'software' ? <Monitor className="w-3 h-3" /> : <Settings className="w-3 h-3" />}
+                          <Badge 
+                            className={cn(
+                              "border-none rounded-lg flex items-center gap-1.5 text-[9px] font-black uppercase tracking-widest py-1 px-2 shadow-lg",
+                              tutorial.tipo_contenido === 'software' ? "bg-primary text-primary-foreground" : "bg-accent text-accent-foreground"
+                            )}
+                          >
+                            {tutorial.tipo_contenido === 'software' ? <Monitor className="w-3.5 h-3.5" /> : <Settings className="w-3.5 h-3.5" />}
                             {tutorial.tipo_contenido === 'software' ? 'Software' : 'Operación'}
                           </Badge>
                         </div>
