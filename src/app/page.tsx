@@ -163,12 +163,25 @@ function TutorialsContent() {
 
   const handleDelete = async (id: number) => {
     try {
+      const { data: { user } } = await supabasePROD.auth.getUser();
+      if (!user) throw new Error("Usuario no autenticado");
+
+      // 1. Soft delete
       const { error } = await supabasePROD.from('tutoriales').update({ activo: false }).eq('id', id);
       if (error) throw error;
+
+      // 2. Log Auditoría
+      await supabasePROD.from('auditoria_tutoriales').insert([{
+        tutorial_id: id,
+        usuario_id: user.id,
+        accion: 'ELIMINACION',
+        detalles: `El usuario eliminó el tutorial con ID ${id}`
+      }]);
+
       setTutorials(prev => prev.filter(t => t.id !== id));
       toast({ title: "Tutorial eliminado" });
     } catch (error: any) {
-      toast({ variant: "destructive", title: "Error" });
+      toast({ variant: "destructive", title: "Error", description: error.message });
     }
   };
 

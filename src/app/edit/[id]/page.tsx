@@ -125,6 +125,9 @@ function EditContent() {
     e.preventDefault();
     setSaving(true);
     try {
+      const { data: { user } } = await supabasePROD.auth.getUser();
+      if (!user) throw new Error("Usuario no autenticado");
+
       let currentMiniaturaUrl = formData.miniaturaUrl;
       let currentVideoUrl = formData.videoUrl;
 
@@ -162,6 +165,14 @@ function EditContent() {
         .eq('id', id);
 
       if (error) throw error;
+
+      // Log Auditoría
+      await supabasePROD.from('auditoria_tutoriales').insert([{
+        tutorial_id: parseInt(id as string),
+        usuario_id: user.id,
+        accion: 'MODIFICACION',
+        detalles: `El usuario modificó el tutorial: ${formData.titulo}`
+      }]);
 
       toast({ title: "Actualizado", description: "El proceso se ha guardado correctamente." });
       router.push('/');
