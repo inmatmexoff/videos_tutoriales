@@ -69,7 +69,7 @@ interface Borrador {
   fecha: string;
 }
 
-const MAX_FILE_SIZE_MB = 100;
+const MAX_FILE_SIZE_MB = 50;
 const DRAFTS_KEY = "tutorial_upload_drafts_v2";
 
 export default function UploadTutorialPage() {
