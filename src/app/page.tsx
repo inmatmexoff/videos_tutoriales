@@ -21,7 +21,9 @@ import {
   CheckCircle2,
   FolderOpen,
   Clock9,
-  AlertCircle
+  AlertCircle,
+  UploadCloud,
+  FileVideo
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -320,12 +322,19 @@ function TutorialsContent() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
                   {groupTutorials.map((tutorial) => (
                     <Card key={tutorial.id} className="group overflow-hidden rounded-2xl border-none ring-1 ring-border bg-card/50 hover:ring-primary/50 transition-all duration-300">
-                      <div className="relative aspect-video overflow-hidden">
-                        <img 
-                          src={tutorial.miniatura_url || "https://picsum.photos/seed/placeholder/600/400"} 
-                          alt="" 
-                          className="object-cover w-full h-full group-hover:scale-105 transition-transform duration-500" 
-                        />
+                      <div className="relative aspect-video overflow-hidden bg-muted flex items-center justify-center">
+                        {tutorial.url_video ? (
+                          <img 
+                            src={tutorial.miniatura_url || "https://picsum.photos/seed/placeholder/600/400"} 
+                            alt="" 
+                            className="object-cover w-full h-full group-hover:scale-105 transition-transform duration-500" 
+                          />
+                        ) : (
+                          <div className="flex flex-col items-center justify-center text-muted-foreground/40 group-hover:text-primary/40 transition-colors">
+                            <UploadCloud className="w-12 h-12 mb-2" />
+                            <span className="text-[10px] font-bold uppercase tracking-widest">Subir Video</span>
+                          </div>
+                        )}
                         <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                           <Button variant="secondary" className="rounded-full h-12 w-12 p-0 shadow-xl" onClick={() => setViewingTutorial(tutorial)}>
                             {tutorial.url_video ? <Play className="fill-current w-5 h-5" /> : <Info className="w-5 h-5" />}
