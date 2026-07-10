@@ -2,13 +2,15 @@
 
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { 
-  ArrowLeft, 
-  FolderPlus, 
-  Layers, 
-  Save, 
-  Loader2, 
+import {
+  ArrowLeft,
+  ArrowUpDown,
+  FolderPlus,
+  Layers,
+  Save,
+  Loader2,
   Tag,
+  Boxes,
   Video,
   Edit2,
   Trash2,
@@ -56,10 +58,15 @@ function AdminContent() {
   // Estados para creación
   const [catData, setCatData] = useState({ nombre: "", descripcion: "" });
   const [modData, setModData] = useState({ categoriaId: "", nombre: "", descripcion: "" });
+  const [subcatData, setSubcatData] = useState({ categoriaId: "", moduloId: "", nombre: "", descripcion: "" });
 
   // Estados para edición de categoría
   const [editingCatId, setEditingCatId] = useState<number | null>(null);
   const [editCatData, setEditCatData] = useState({ nombre: "", descripcion: "" });
+
+  // Módulos disponibles para asignar una subcategoría (dependen de la categoría elegida)
+  const [modulesForSubcat, setModulesForSubcat] = useState<any[]>([]);
+  const [loadingModulesForSubcat, setLoadingModulesForSubcat] = useState(false);
 
   const fetchCategories = async () => {
     try {
@@ -81,6 +88,31 @@ function AdminContent() {
   useEffect(() => {
     fetchCategories();
   }, []);
+
+  useEffect(() => {
+    async function fetchModulesForSubcat() {
+      if (!subcatData.categoriaId) {
+        setModulesForSubcat([]);
+        return;
+      }
+      try {
+        setLoadingModulesForSubcat(true);
+        const { data, error } = await supabasePROD
+          .from('modulos_tutoriales')
+          .select('id, nombre')
+          .eq('categoria_id', subcatData.categoriaId)
+          .eq('activo', true)
+          .order('nombre', { ascending: true });
+        if (error) throw error;
+        setModulesForSubcat(data || []);
+      } catch (error: any) {
+        toast({ variant: "destructive", title: "Error", description: "No se pudieron cargar los módulos." });
+      } finally {
+        setLoadingModulesForSubcat(false);
+      }
+    }
+    fetchModulesForSubcat();
+  }, [subcatData.categoriaId, toast]);
 
   const handleCreateCategory = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -179,6 +211,34 @@ function AdminContent() {
     }
   };
 
+  const handleCreateSubcategory = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!subcatData.moduloId) return;
+    setLoading(true);
+    try {
+      const { data: { user } } = await supabasePROD.auth.getUser();
+      if (!user) throw new Error("No autenticado");
+
+      const { error } = await supabasePROD
+        .from('subcategorias_tutoriales')
+        .insert([{
+          modulo_id: parseInt(subcatData.moduloId),
+          nombre: subcatData.nombre,
+          descripcion: subcatData.descripcion,
+          orden: 0,
+          creado_por: user.id
+        }]);
+
+      if (error) throw error;
+      toast({ title: "Subcategoría creada", description: `Se ha registrado "${subcatData.nombre}"` });
+      setSubcatData(prev => ({ ...prev, nombre: "", descripcion: "" }));
+    } catch (error: any) {
+      toast({ variant: "destructive", title: "Error", description: error.message });
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const startEditing = (cat: any) => {
     setEditingCatId(cat.id);
     setEditCatData({ nombre: cat.nombre, descripcion: cat.descripcion || "" });
@@ -191,17 +251,27 @@ function AdminContent() {
           <ArrowLeft className="mr-2 h-4 w-4" /> Volver al inicio
         </Button>
 
-        <div className="flex items-center gap-3 mb-2">
-          <div className="p-2 bg-primary/10 rounded-lg">
-            <Layers className="w-6 h-6 text-primary" />
+        <div className="flex items-center justify-between gap-3 mb-2 flex-wrap">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-primary/10 rounded-lg">
+              <Layers className="w-6 h-6 text-primary" />
+            </div>
+            <h1 className="text-3xl font-bold">Gestión de Estructura</h1>
           </div>
-          <h1 className="text-3xl font-bold">Gestión de Estructura</h1>
+          <Button
+            variant="outline"
+            onClick={() => router.push('/admin/orden')}
+            className="rounded-xl border-primary/20 hover:bg-primary/5 gap-2"
+          >
+            <ArrowUpDown className="w-4 h-4 text-primary" /> Ordenar Videos
+          </Button>
         </div>
 
         <Tabs defaultValue="categorias" className="w-full">
-          <TabsList className="grid w-full grid-cols-2 rounded-xl h-12">
+          <TabsList className="grid w-full grid-cols-3 rounded-xl h-12">
             <TabsTrigger value="categorias" className="rounded-lg">Categorías</TabsTrigger>
             <TabsTrigger value="modulos" className="rounded-lg">Módulos</TabsTrigger>
+            <TabsTrigger value="subcategorias" className="rounded-lg">Subcategorías</TabsTrigger>
           </TabsList>
 
           <TabsContent value="categorias" className="mt-6 space-y-6">
@@ -367,6 +437,83 @@ function AdminContent() {
                   <Button disabled={loading || !modData.categoriaId} className="w-full rounded-xl">
                     {loading ? <Loader2 className="animate-spin mr-2" /> : <Save className="mr-2 h-4 w-4" />}
                     Guardar Módulo
+                  </Button>
+                </CardFooter>
+              </form>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="subcategorias" className="mt-6">
+            <Card className="border-none shadow-xl bg-card/50 backdrop-blur-sm">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Boxes className="w-5 h-5 text-primary" /> Nueva Subcategoría
+                </CardTitle>
+                <CardDescription>
+                  Divide un módulo en secciones (ej: dentro de "Impresión de Etiquetas" crea "Mercado Libre", "Walmart", "Amazon"). Es opcional: solo los módulos que la necesiten tendrán subcategorías.
+                </CardDescription>
+              </CardHeader>
+              <form onSubmit={handleCreateSubcategory}>
+                <CardContent className="space-y-4">
+                  <div className="space-y-2">
+                    <Label>Categoría</Label>
+                    <Select
+                      value={subcatData.categoriaId}
+                      onValueChange={v => setSubcatData(prev => ({ ...prev, categoriaId: v, moduloId: "" }))}
+                    >
+                      <SelectTrigger className="rounded-xl">
+                        <SelectValue placeholder="Selecciona categoría" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {categories.map(cat => (
+                          <SelectItem key={cat.id} value={cat.id.toString()}>{cat.nombre}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Módulo Padre</Label>
+                    <Select
+                      value={subcatData.moduloId}
+                      onValueChange={v => setSubcatData(prev => ({ ...prev, moduloId: v }))}
+                      disabled={!subcatData.categoriaId}
+                    >
+                      <SelectTrigger className="rounded-xl">
+                        <SelectValue placeholder={loadingModulesForSubcat ? "Cargando..." : "Selecciona módulo"} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {modulesForSubcat.map(mod => (
+                          <SelectItem key={mod.id} value={mod.id.toString()}>{mod.nombre}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="subcat-nombre">Nombre de Subcategoría</Label>
+                    <Input
+                      id="subcat-nombre"
+                      placeholder="Ej: Mercado Libre"
+                      value={subcatData.nombre}
+                      onChange={e => setSubcatData(prev => ({ ...prev, nombre: e.target.value }))}
+                      required
+                      className="rounded-xl"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="subcat-desc">Descripción (Opcional)</Label>
+                    <Input
+                      id="subcat-desc"
+                      placeholder="Breve detalle..."
+                      value={subcatData.descripcion}
+                      onChange={e => setSubcatData(prev => ({ ...prev, descripcion: e.target.value }))}
+                      className="rounded-xl"
+                    />
+                  </div>
+                </CardContent>
+                <CardFooter>
+                  <Button disabled={loading || !subcatData.moduloId} className="w-full rounded-xl">
+                    {loading ? <Loader2 className="animate-spin mr-2" /> : <Save className="mr-2 h-4 w-4" />}
+                    Guardar Subcategoría
                   </Button>
                 </CardFooter>
               </form>

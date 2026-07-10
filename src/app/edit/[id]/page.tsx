@@ -57,9 +57,13 @@ function EditContent() {
     videoUrl: "",
     duracion: "",
     moduloId: null as number | null,
+    subcategoriaId: "",
     esEspacio: false,
     tipoContenido: "operacion"
   });
+
+  const [subcategories, setSubcategories] = useState<{ id: number; nombre: string }[]>([]);
+  const [loadingSubcategories, setLoadingSubcategories] = useState(false);
 
   useEffect(() => {
     async function fetchTutorial() {
@@ -85,6 +89,7 @@ function EditContent() {
             videoUrl: data.url_video || "",
             duracion: data.duracion_segundos?.toString() || "0",
             moduloId: data.modulo_id,
+            subcategoriaId: data.subcategoria_id ? data.subcategoria_id.toString() : "",
             esEspacio: data.es_espacio || false,
             tipoContenido: data.tipo_contenido || "operacion"
           });
@@ -100,6 +105,31 @@ function EditContent() {
     }
     fetchTutorial();
   }, [id, toast, router]);
+
+  useEffect(() => {
+    async function fetchSubcategories() {
+      if (!formData.moduloId) {
+        setSubcategories([]);
+        return;
+      }
+      try {
+        setLoadingSubcategories(true);
+        const { data, error } = await supabasePROD
+          .from('subcategorias_tutoriales')
+          .select('id, nombre')
+          .eq('modulo_id', formData.moduloId)
+          .eq('activo', true)
+          .order('nombre', { ascending: true });
+        if (error) throw error;
+        setSubcategories(data || []);
+      } catch (error: any) {
+        toast({ variant: "destructive", title: "Error", description: "No se pudieron cargar las subcategorías." });
+      } finally {
+        setLoadingSubcategories(false);
+      }
+    }
+    fetchSubcategories();
+  }, [formData.moduloId, toast]);
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -166,7 +196,8 @@ function EditContent() {
           duracion_segundos: parseInt(formData.duracion) || 0,
           fecha_actualizacion: new Date().toISOString(),
           es_espacio: currentVideoUrl === "" && !videoFile, // Sigue siendo espacio si aún no tiene video
-          tipo_contenido: formData.tipoContenido
+          tipo_contenido: formData.tipoContenido,
+          subcategoria_id: formData.subcategoriaId ? parseInt(formData.subcategoriaId) : null
         })
         .eq('id', id);
 
@@ -257,6 +288,24 @@ function EditContent() {
                   </Select>
                 </div>
               </div>
+
+              {subcategories.length > 0 && (
+                <div className="space-y-2">
+                  <Label>Subcategoría (Opcional)</Label>
+                  <Select
+                    value={formData.subcategoriaId}
+                    onValueChange={(v) => setFormData(p => ({ ...p, subcategoriaId: v === "NONE" ? "" : v }))}
+                  >
+                    <SelectTrigger className="rounded-xl">
+                      <SelectValue placeholder={loadingSubcategories ? "Cargando..." : "Selecciona subcategoría"} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="NONE">Sin subcategoría</SelectItem>
+                      {subcategories.map(s => <SelectItem key={s.id} value={s.id.toString()}>{s.nombre}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
 
               <div className="space-y-2">
                 <Label htmlFor="descripcion">Descripción</Label>

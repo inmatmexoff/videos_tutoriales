@@ -62,12 +62,18 @@ interface Modulo {
   nombre: string;
 }
 
+interface Subcategoria {
+  id: number;
+  nombre: string;
+}
+
 interface Borrador {
   id: string;
   titulo: string;
   descripcion: string;
   categoriaId: string;
   moduloId: string;
+  subcategoriaId: string;
   tipoContenido: string;
   fecha: string;
 }
@@ -89,11 +95,13 @@ function UploadContent() {
   
   const [categories, setCategories] = useState<Categoria[]>([]);
   const [modules, setModules] = useState<Modulo[]>([]);
+  const [subcategories, setSubcategories] = useState<Subcategoria[]>([]);
   const [drafts, setDrafts] = useState<Borrador[]>([]);
   const [showDraftsDialog, setShowDraftsDialog] = useState(false);
-  
+
   const [loading, setLoading] = useState(false);
   const [loadingModules, setLoadingModules] = useState(false);
+  const [loadingSubcategories, setLoadingSubcategories] = useState(false);
   
   const [videoFile, setVideoFile] = useState<File | null>(null);
   const [imageFile, setImageFile] = useState<File | null>(null);
@@ -105,6 +113,7 @@ function UploadContent() {
   const [formData, setFormData] = useState({
     categoriaId: "",
     moduloId: "",
+    subcategoriaId: "",
     titulo: "",
     descripcion: "",
     duracion: "0",
@@ -166,6 +175,33 @@ function UploadContent() {
     fetchModules();
   }, [formData.categoriaId, toast]);
 
+  useEffect(() => {
+    async function fetchSubcategories() {
+      if (!formData.moduloId) {
+        setSubcategories([]);
+        return;
+      }
+
+      try {
+        setLoadingSubcategories(true);
+        const { data, error } = await supabasePROD
+          .from('subcategorias_tutoriales')
+          .select('id, nombre')
+          .eq('modulo_id', formData.moduloId)
+          .eq('activo', true)
+          .order('nombre', { ascending: true });
+
+        if (error) throw error;
+        setSubcategories(data || []);
+      } catch (error: any) {
+        toast({ variant: "destructive", title: "Error", description: "No se pudieron cargar las subcategorías." });
+      } finally {
+        setLoadingSubcategories(false);
+      }
+    }
+    fetchSubcategories();
+  }, [formData.moduloId, toast]);
+
   const handleVideoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     setFileError(null);
@@ -213,6 +249,7 @@ function UploadContent() {
       descripcion: formData.descripcion,
       categoriaId: formData.categoriaId,
       moduloId: formData.moduloId,
+      subcategoriaId: formData.subcategoriaId,
       tipoContenido: formData.tipoContenido,
       fecha: new Date().toLocaleString()
     };
@@ -229,6 +266,7 @@ function UploadContent() {
       descripcion: draft.descripcion,
       categoriaId: draft.categoriaId,
       moduloId: draft.moduloId,
+      subcategoriaId: draft.subcategoriaId || "",
       tipoContenido: draft.tipoContenido || "operacion",
       duracion: formData.duracion
     });
@@ -287,14 +325,28 @@ function UploadContent() {
         miniaturaUrl = imgUrl;
       }
 
+      // El nuevo video se agrega al final del orden dentro de su mismo módulo/subcategoría
+      let ordenQuery = supabasePROD
+        .from('tutoriales')
+        .select('orden')
+        .eq('modulo_id', parseInt(formData.moduloId))
+        .order('orden', { ascending: false })
+        .limit(1);
+      ordenQuery = formData.subcategoriaId
+        ? ordenQuery.eq('subcategoria_id', parseInt(formData.subcategoriaId))
+        : ordenQuery.is('subcategoria_id', null);
+      const { data: maxOrdenRows } = await ordenQuery;
+      const nextOrden = maxOrdenRows && maxOrdenRows.length > 0 ? maxOrdenRows[0].orden + 1 : 0;
+
       const { data: newTutorial, error: dbError } = await supabasePROD.from('tutoriales').insert([{
         modulo_id: parseInt(formData.moduloId),
+        subcategoria_id: formData.subcategoriaId ? parseInt(formData.subcategoriaId) : null,
         titulo: formData.titulo,
         descripcion: formData.descripcion,
         url_video: videoUrl,
         miniatura_url: miniaturaUrl,
         duracion_segundos: parseInt(formData.duracion) || 0,
-        orden: 0,
+        orden: nextOrden,
         es_espacio: uploadLater,
         tipo_contenido: formData.tipoContenido,
         creado_por: user.id
@@ -432,7 +484,7 @@ function UploadContent() {
                 </div>
                 <div className="space-y-2">
                   <Label>Módulo</Label>
-                  <Select value={formData.moduloId} onValueChange={(v) => v === "ADD_NEW_MODULE" ? router.push('/admin') : setFormData(p => ({ ...p, moduloId: v }))} disabled={!formData.categoriaId}>
+                  <Select value={formData.moduloId} onValueChange={(v) => v === "ADD_NEW_MODULE" ? router.push('/admin') : setFormData(p => ({ ...p, moduloId: v, subcategoriaId: "" }))} disabled={!formData.categoriaId}>
                     <SelectTrigger className="rounded-xl">
                       <SelectValue placeholder={loadingModules ? "Cargando..." : "Selecciona módulo"} />
                     </SelectTrigger>
@@ -461,6 +513,20 @@ function UploadContent() {
                     </SelectContent>
                   </Select>
                 </div>
+                {subcategories.length > 0 && (
+                  <div className="space-y-2">
+                    <Label>Subcategoría (Opcional)</Label>
+                    <Select value={formData.subcategoriaId} onValueChange={(v) => setFormData(p => ({ ...p, subcategoriaId: v === "NONE" ? "" : v }))}>
+                      <SelectTrigger className="rounded-xl">
+                        <SelectValue placeholder={loadingSubcategories ? "Cargando..." : "Selecciona subcategoría"} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="NONE">Sin subcategoría</SelectItem>
+                        {subcategories.map(s => <SelectItem key={s.id} value={s.id.toString()}>{s.nombre}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
               </div>
 
               <div className="space-y-2">
@@ -493,7 +559,7 @@ function UploadContent() {
                     <div className="flex items-center justify-center w-full h-32 border-2 border-dashed rounded-xl cursor-pointer bg-muted/30 hover:bg-muted/50 transition-all relative overflow-hidden">
                       {videoPreview && <video src={videoPreview} className="absolute inset-0 w-full h-full object-cover opacity-30" />}
                       <input type="file" accept="video/*" className="absolute inset-0 opacity-0 cursor-pointer" onChange={handleVideoChange} disabled={uploadLater} />
-                      <div className="text-center px-2 z-10">
+                      <div className="text-center px-2 z-10 pointer-events-none">
                         <FileVideo className={`mx-auto mb-2 ${videoFile ? 'text-primary' : 'text-muted-foreground'}`} />
                         <p className="text-xs truncate max-w-[200px] font-medium">{videoFile ? videoFile.name : "Seleccionar Video"}</p>
                       </div>
@@ -505,7 +571,7 @@ function UploadContent() {
                     <div className="flex items-center justify-center w-full h-32 border-2 border-dashed rounded-xl cursor-pointer bg-muted/30 hover:bg-muted/50 transition-all relative overflow-hidden">
                       {imagePreview && <img src={imagePreview} alt="Preview" className="absolute inset-0 w-full h-full object-cover opacity-30" />}
                       <input type="file" accept="image/*" className="absolute inset-0 opacity-0 cursor-pointer" onChange={handleImageChange} />
-                      <div className="text-center px-2 z-10">
+                      <div className="text-center px-2 z-10 pointer-events-none">
                         <ImageIcon className={`mx-auto mb-2 ${imageFile ? 'text-primary' : 'text-muted-foreground'}`} />
                         <p className="text-xs truncate max-w-[200px] font-medium">{imageFile ? imageFile.name : "Seleccionar Imagen"}</p>
                       </div>
