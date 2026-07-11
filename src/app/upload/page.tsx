@@ -21,7 +21,11 @@ import {
   Clock9,
   Info,
   Monitor,
-  Settings
+  Settings,
+  Paperclip,
+  X,
+  ListChecks,
+  Plus
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -47,6 +51,8 @@ import {
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { supabasePROD } from "@/lib/supabase";
+import { DocumentoRef, MAX_DOCUMENT_SIZE_MB, formatFileSize } from "@/lib/documentos";
+import { compressImage } from "@/lib/image";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { AdminGuard } from "@/components/admin-guard";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -108,7 +114,10 @@ function UploadContent() {
   const [videoPreview, setVideoPreview] = useState<string | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [uploadLater, setUploadLater] = useState(false);
-  
+  const [documentFiles, setDocumentFiles] = useState<File[]>([]);
+  const [checklistItems, setChecklistItems] = useState<string[]>([]);
+  const [checklistInput, setChecklistInput] = useState("");
+
   const [fileError, setFileError] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     categoriaId: "",
@@ -228,13 +237,45 @@ function UploadContent() {
     }
   };
 
-  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      setImageFile(file);
-      const url = URL.createObjectURL(file);
+      const compressed = await compressImage(file);
+      setImageFile(compressed);
+      const url = URL.createObjectURL(compressed);
       setImagePreview(url);
     }
+  };
+
+  const handleDocumentsChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
+
+    const tooLarge = files.filter(f => f.size / (1024 * 1024) > MAX_DOCUMENT_SIZE_MB);
+    if (tooLarge.length > 0) {
+      setFileError(`"${tooLarge[0].name}" supera el límite de ${MAX_DOCUMENT_SIZE_MB}MB por documento.`);
+      e.target.value = "";
+      return;
+    }
+
+    setFileError(null);
+    setDocumentFiles(prev => [...prev, ...files]);
+    e.target.value = "";
+  };
+
+  const handleRemoveDocument = (index: number) => {
+    setDocumentFiles(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const handleAddChecklistItem = () => {
+    const text = checklistInput.trim();
+    if (!text) return;
+    setChecklistItems(prev => [...prev, text]);
+    setChecklistInput("");
+  };
+
+  const handleRemoveChecklistItem = (index: number) => {
+    setChecklistItems(prev => prev.filter((_, i) => i !== index));
   };
 
   const handleSaveDraft = () => {
@@ -325,6 +366,15 @@ function UploadContent() {
         miniaturaUrl = imgUrl;
       }
 
+      const documentos: DocumentoRef[] = [];
+      for (const doc of documentFiles) {
+        const docFileName = `${timestamp}_${doc.name.replace(/\s/g, '_')}`;
+        const docPath = `${cleanCat}/${cleanMod}/documentos/${docFileName}`;
+        const { error: docError } = await supabasePROD.storage.from('documentos-tutoriales').upload(docPath, doc);
+        if (docError) throw docError;
+        documentos.push({ nombre: doc.name, path: docPath });
+      }
+
       // El nuevo video se agrega al final del orden dentro de su mismo módulo/subcategoría
       let ordenQuery = supabasePROD
         .from('tutoriales')
@@ -345,6 +395,8 @@ function UploadContent() {
         descripcion: formData.descripcion,
         url_video: videoUrl,
         miniatura_url: miniaturaUrl,
+        documentos: documentos.length > 0 ? documentos : null,
+        checklist: checklistItems.length > 0 ? checklistItems : null,
         duracion_segundos: parseInt(formData.duracion) || 0,
         orden: nextOrden,
         es_espacio: uploadLater,
@@ -516,13 +568,17 @@ function UploadContent() {
                 {subcategories.length > 0 && (
                   <div className="space-y-2">
                     <Label>Subcategoría (Opcional)</Label>
-                    <Select value={formData.subcategoriaId} onValueChange={(v) => setFormData(p => ({ ...p, subcategoriaId: v === "NONE" ? "" : v }))}>
+                    <Select value={formData.subcategoriaId} onValueChange={(v) => v === "ADD_NEW_SUBCATEGORY" ? router.push('/admin') : setFormData(p => ({ ...p, subcategoriaId: v === "NONE" ? "" : v }))}>
                       <SelectTrigger className="rounded-xl">
                         <SelectValue placeholder={loadingSubcategories ? "Cargando..." : "Selecciona subcategoría"} />
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="NONE">Sin subcategoría</SelectItem>
                         {subcategories.map(s => <SelectItem key={s.id} value={s.id.toString()}>{s.nombre}</SelectItem>)}
+                        <SelectSeparator />
+                        <SelectItem value="ADD_NEW_SUBCATEGORY" className="text-primary font-medium focus:bg-primary/10">
+                          <div className="flex items-center gap-2"><PlusCircle className="w-4 h-4" />Crear nueva...</div>
+                        </SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -596,6 +652,93 @@ function UploadContent() {
                     </div>
                   </div>
                 </div>
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center justify-between mb-1">
+                  <Label className="flex items-center gap-2">
+                    Documentos (Opcional)
+                  </Label>
+                  <Badge variant="outline" className="text-[9px] h-4 bg-orange-500/5 text-orange-600 border-orange-200 uppercase font-bold tracking-wider">
+                    Máx. {MAX_DOCUMENT_SIZE_MB}MB c/u
+                  </Badge>
+                </div>
+                <div className="flex items-center justify-center w-full h-24 border-2 border-dashed rounded-xl cursor-pointer bg-muted/30 hover:bg-muted/50 transition-all relative overflow-hidden">
+                  <input
+                    type="file"
+                    multiple
+                    accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt"
+                    className="absolute inset-0 opacity-0 cursor-pointer"
+                    onChange={handleDocumentsChange}
+                  />
+                  <div className="text-center px-2 z-10 pointer-events-none">
+                    <Paperclip className="mx-auto mb-2 text-muted-foreground" />
+                    <p className="text-xs font-medium">Adjuntar documentos (PDF, Word, Excel, etc.)</p>
+                  </div>
+                </div>
+
+                {documentFiles.length > 0 && (
+                  <div className="space-y-2 mt-2">
+                    {documentFiles.map((doc, index) => (
+                      <div key={`${doc.name}-${index}`} className="flex items-center justify-between gap-2 p-2.5 rounded-xl bg-muted/40 border">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <FileText className="w-4 h-4 text-primary shrink-0" />
+                          <span className="text-xs font-medium truncate">{doc.name}</span>
+                          <span className="text-[10px] text-muted-foreground shrink-0">({formatFileSize(doc.size)})</span>
+                        </div>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6 shrink-0 text-muted-foreground hover:text-destructive"
+                          onClick={() => handleRemoveDocument(index)}
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <Label className="flex items-center gap-2">
+                  <ListChecks className="w-4 h-4" /> Checklist (Opcional)
+                </Label>
+                <div className="flex gap-2">
+                  <Input
+                    value={checklistInput}
+                    onChange={e => setChecklistInput(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleAddChecklistItem(); } }}
+                    placeholder="Escribe un punto del checklist y presiona Enter"
+                    className="rounded-xl"
+                  />
+                  <Button type="button" variant="outline" className="rounded-xl shrink-0" onClick={handleAddChecklistItem}>
+                    <Plus className="h-4 w-4" />
+                  </Button>
+                </div>
+
+                {checklistItems.length > 0 && (
+                  <div className="space-y-2 mt-2">
+                    {checklistItems.map((item, index) => (
+                      <div key={`${item}-${index}`} className="flex items-center justify-between gap-2 p-2.5 rounded-xl bg-muted/40 border">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="text-xs font-bold text-muted-foreground shrink-0">{index + 1}.</span>
+                          <span className="text-xs font-medium truncate">{item}</span>
+                        </div>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6 shrink-0 text-muted-foreground hover:text-destructive"
+                          onClick={() => handleRemoveChecklistItem(index)}
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
               <div className="space-y-2">

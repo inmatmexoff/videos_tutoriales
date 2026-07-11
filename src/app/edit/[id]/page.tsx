@@ -15,7 +15,11 @@ import {
   FileVideo,
   AlertCircle,
   Settings,
-  Monitor
+  Monitor,
+  Paperclip,
+  X,
+  ListChecks,
+  Plus
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -24,6 +28,9 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { supabasePROD } from "@/lib/supabase";
+import { formatFileSize, MAX_DOCUMENT_SIZE_MB, DocumentoRef } from "@/lib/documentos";
+import { normalizeChecklist } from "@/lib/checklist-pdf";
+import { compressImage } from "@/lib/image";
 import { AdminGuard } from "@/components/admin-guard";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -49,6 +56,10 @@ function EditContent() {
   const [videoFile, setVideoFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string>("");
   const [videoPreviewUrl, setVideoPreviewUrl] = useState<string>("");
+  const [existingDocuments, setExistingDocuments] = useState<DocumentoRef[]>([]);
+  const [newDocumentFiles, setNewDocumentFiles] = useState<File[]>([]);
+  const [checklistItems, setChecklistItems] = useState<string[]>([]);
+  const [checklistInput, setChecklistInput] = useState("");
   
   const [formData, setFormData] = useState({
     titulo: "",
@@ -95,6 +106,8 @@ function EditContent() {
           });
           setPreviewUrl(data.miniatura_url);
           setVideoPreviewUrl(data.url_video);
+          setExistingDocuments(data.documentos || []);
+          setChecklistItems(normalizeChecklist(data.checklist));
         }
       } catch (error: any) {
         toast({ variant: "destructive", title: "Error", description: "No se pudo cargar el tutorial." });
@@ -131,11 +144,12 @@ function EditContent() {
     fetchSubcategories();
   }, [formData.moduloId, toast]);
 
-  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      setImageFile(file);
-      setPreviewUrl(URL.createObjectURL(file));
+      const compressed = await compressImage(file);
+      setImageFile(compressed);
+      setPreviewUrl(URL.createObjectURL(compressed));
     }
   };
 
@@ -154,6 +168,40 @@ function EditContent() {
       };
       video.src = url;
     }
+  };
+
+  const handleDocumentsChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
+
+    const tooLarge = files.find(f => f.size / (1024 * 1024) > MAX_DOCUMENT_SIZE_MB);
+    if (tooLarge) {
+      toast({ variant: "destructive", title: "Documento demasiado grande", description: `"${tooLarge.name}" supera el límite de ${MAX_DOCUMENT_SIZE_MB}MB.` });
+      e.target.value = "";
+      return;
+    }
+
+    setNewDocumentFiles(prev => [...prev, ...files]);
+    e.target.value = "";
+  };
+
+  const handleRemoveExistingDocument = (index: number) => {
+    setExistingDocuments(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const handleRemoveNewDocument = (index: number) => {
+    setNewDocumentFiles(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const handleAddChecklistItem = () => {
+    const text = checklistInput.trim();
+    if (!text) return;
+    setChecklistItems(prev => [...prev, text]);
+    setChecklistInput("");
+  };
+
+  const handleRemoveChecklistItem = (index: number) => {
+    setChecklistItems(prev => prev.filter((_, i) => i !== index));
   };
 
   const handleUpdate = async (e: React.FormEvent) => {
@@ -186,6 +234,16 @@ function EditContent() {
         currentVideoUrl = publicUrl;
       }
 
+      const newDocuments: DocumentoRef[] = [];
+      for (const doc of newDocumentFiles) {
+        const docFileName = `${timestamp}_${doc.name.replace(/\s/g, '_')}`;
+        const docPath = `editados/documentos/${docFileName}`;
+        const { error: docError } = await supabasePROD.storage.from('documentos-tutoriales').upload(docPath, doc);
+        if (docError) throw docError;
+        newDocuments.push({ nombre: doc.name, path: docPath });
+      }
+      const combinedDocuments = [...existingDocuments, ...newDocuments];
+
       const { error } = await supabasePROD
         .from('tutoriales')
         .update({
@@ -193,6 +251,8 @@ function EditContent() {
           descripcion: formData.descripcion,
           miniatura_url: currentMiniaturaUrl,
           url_video: currentVideoUrl,
+          documentos: combinedDocuments.length > 0 ? combinedDocuments : null,
+          checklist: checklistItems.length > 0 ? checklistItems : null,
           duracion_segundos: parseInt(formData.duracion) || 0,
           fecha_actualizacion: new Date().toISOString(),
           es_espacio: currentVideoUrl === "" && !videoFile, // Sigue siendo espacio si aún no tiene video
@@ -377,8 +437,110 @@ function EditContent() {
                   </div>
                 </div>
               </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center justify-between mb-1">
+                  <Label>Documentos (Opcional)</Label>
+                  <Badge variant="outline" className="text-[9px] h-4 bg-orange-500/5 text-orange-600 border-orange-200 uppercase font-bold tracking-wider">
+                    Máx. {MAX_DOCUMENT_SIZE_MB}MB c/u
+                  </Badge>
+                </div>
+                <div className="flex items-center justify-center w-full h-24 border-2 border-dashed rounded-xl cursor-pointer bg-muted/30 hover:bg-muted/50 transition-all relative overflow-hidden">
+                  <input
+                    type="file"
+                    multiple
+                    accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt"
+                    className="absolute inset-0 opacity-0 cursor-pointer"
+                    onChange={handleDocumentsChange}
+                  />
+                  <div className="text-center px-2 z-10 pointer-events-none">
+                    <Paperclip className="mx-auto mb-2 text-muted-foreground" />
+                    <p className="text-xs font-medium">Adjuntar documentos (PDF, Word, Excel, etc.)</p>
+                  </div>
+                </div>
+
+                {(existingDocuments.length > 0 || newDocumentFiles.length > 0) && (
+                  <div className="space-y-2 mt-2">
+                    {existingDocuments.map((doc, index) => (
+                      <div key={`existing-${doc.path}-${index}`} className="flex items-center justify-between gap-2 p-2.5 rounded-xl bg-muted/40 border">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <FileText className="w-4 h-4 text-primary shrink-0" />
+                          <span className="text-xs font-medium truncate">{doc.nombre}</span>
+                        </div>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6 shrink-0 text-muted-foreground hover:text-destructive"
+                          onClick={() => handleRemoveExistingDocument(index)}
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    ))}
+                    {newDocumentFiles.map((doc, index) => (
+                      <div key={`new-${doc.name}-${index}`} className="flex items-center justify-between gap-2 p-2.5 rounded-xl bg-muted/40 border">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <FileText className="w-4 h-4 text-primary shrink-0" />
+                          <span className="text-xs font-medium truncate">{doc.name}</span>
+                          <span className="text-[10px] text-muted-foreground shrink-0">({formatFileSize(doc.size)})</span>
+                        </div>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6 shrink-0 text-muted-foreground hover:text-destructive"
+                          onClick={() => handleRemoveNewDocument(index)}
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <Label className="flex items-center gap-2">
+                  <ListChecks className="w-4 h-4" /> Checklist (Opcional)
+                </Label>
+                <div className="flex gap-2">
+                  <Input
+                    value={checklistInput}
+                    onChange={e => setChecklistInput(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleAddChecklistItem(); } }}
+                    placeholder="Escribe un punto del checklist y presiona Enter"
+                    className="rounded-xl"
+                  />
+                  <Button type="button" variant="outline" className="rounded-xl shrink-0" onClick={handleAddChecklistItem}>
+                    <Plus className="h-4 w-4" />
+                  </Button>
+                </div>
+
+                {checklistItems.length > 0 && (
+                  <div className="space-y-2 mt-2">
+                    {checklistItems.map((item, index) => (
+                      <div key={`${item}-${index}`} className="flex items-center justify-between gap-2 p-2.5 rounded-xl bg-muted/40 border">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="text-xs font-bold text-muted-foreground shrink-0">{index + 1}.</span>
+                          <span className="text-xs font-medium truncate">{item}</span>
+                        </div>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6 shrink-0 text-muted-foreground hover:text-destructive"
+                          onClick={() => handleRemoveChecklistItem(index)}
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </CardContent>
-            
+
             <CardFooter className="flex justify-end gap-3 pt-6 border-t">
               <Button type="button" variant="ghost" onClick={() => router.push('/')} className="rounded-xl">
                 Cancelar

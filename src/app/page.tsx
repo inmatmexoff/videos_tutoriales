@@ -1,7 +1,8 @@
 "use client";
 
-import React, { useState, useMemo, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import Image from 'next/image';
 import { 
   Plus, 
   Search, 
@@ -19,6 +20,7 @@ import {
   HelpCircle,
   ChevronRight,
   ChevronDown,
+  ChevronLeft,
   CheckCircle2,
   FolderOpen,
   Clock9,
@@ -31,7 +33,13 @@ import {
   Tag,
   MessageCircle,
   SendHorizontal,
-  Lock
+  Lock,
+  FileText,
+  Download,
+  ListChecks,
+  Circle,
+  GraduationCap,
+  X
 } from "lucide-react";
 import { formatDistanceToNow } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -61,6 +69,8 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { supabasePROD } from "@/lib/supabase";
 import { AdminGuard } from "@/components/admin-guard";
+import { DocumentoRef, getDocumentPreviewKind, DOCUMENTOS_BUCKET, DOCUMENT_SIGNED_URL_TTL_SECONDS } from "@/lib/documentos";
+import { downloadChecklistPdf, normalizeChecklist } from "@/lib/checklist-pdf";
 import { cn } from "@/lib/utils";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
@@ -70,6 +80,8 @@ interface Tutorial {
   descripcion: string;
   url_video: string;
   miniatura_url: string;
+  documentos: DocumentoRef[] | null;
+  checklist: string[] | null;
   duracion_segundos: number;
   es_espacio: boolean;
   tipo_contenido: 'operacion' | 'software';
@@ -78,12 +90,15 @@ interface Tutorial {
     nombre: string;
   } | null;
   modulo: {
+    id: number;
     nombre: string;
     categoria: {
       nombre: string;
     }
   }
 }
+
+type TipoComentario = 'comentario' | 'duda' | 'mejora';
 
 interface Comentario {
   id: number;
@@ -92,6 +107,8 @@ interface Comentario {
   autor_nombre: string;
   contenido: string;
   fecha_creacion: string;
+  tipo: TipoComentario;
+  resuelto: boolean;
 }
 
 export default function TutorialsPage() {
@@ -104,6 +121,8 @@ export default function TutorialsPage() {
 
 function TutorialsContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const showMobileSearch = searchParams.get('buscar') === '1';
   const [tutorials, setTutorials] = useState<Tutorial[]>([]);
   const [categories, setCategories] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
@@ -116,10 +135,17 @@ function TutorialsContent() {
   const [userId, setUserId] = useState<string | null>(null);
   const [userName, setUserName] = useState<string | null>(null);
   const [showHelp, setShowHelp] = useState(false);
+  const [previewDocument, setPreviewDocument] = useState<DocumentoRef | null>(null);
+  const [documentUrls, setDocumentUrls] = useState<Record<string, string>>({});
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
+  const categoryScrollRef = useRef<HTMLDivElement>(null);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(false);
   const [comments, setComments] = useState<Comentario[]>([]);
   const [loadingComments, setLoadingComments] = useState(false);
   const [newComment, setNewComment] = useState("");
+  const [newCommentType, setNewCommentType] = useState<TipoComentario>("comentario");
+  const [activeCommentTab, setActiveCommentTab] = useState<TipoComentario>("comentario");
   const [postingComment, setPostingComment] = useState(false);
   const [deleteTargetId, setDeleteTargetId] = useState<number | null>(null);
   const [deletePassword, setDeletePassword] = useState("");
@@ -135,15 +161,36 @@ function TutorialsContent() {
   };
   const { toast } = useToast();
 
+  const checkCategoryScroll = () => {
+    const el = categoryScrollRef.current;
+    if (!el) return;
+    setCanScrollLeft(el.scrollLeft > 4);
+    setCanScrollRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 4);
+  };
+
+  useEffect(() => {
+    checkCategoryScroll();
+    const el = categoryScrollRef.current;
+    if (!el) return;
+    const handleResize = () => checkCategoryScroll();
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [categories, loadingCategories]);
+
+  const scrollCategories = (direction: 'left' | 'right') => {
+    categoryScrollRef.current?.scrollBy({ left: direction === 'left' ? -220 : 220, behavior: 'smooth' });
+  };
+
   const fetchTutorials = async () => {
     try {
       setLoading(true);
       const { data, error } = await supabasePROD
         .from('tutoriales')
         .select(`
-          id, titulo, descripcion, url_video, miniatura_url, duracion_segundos, es_espacio, tipo_contenido, orden,
+          id, titulo, descripcion, url_video, miniatura_url, documentos, checklist, duracion_segundos, es_espacio, tipo_contenido, orden,
           subcategoria:subcategorias_tutoriales (nombre),
           modulo:modulos_tutoriales (
+            id,
             nombre,
             categoria:categorias_tutoriales (nombre)
           )
@@ -283,7 +330,7 @@ function TutorialsContent() {
       setLoadingComments(true);
       const { data, error } = await supabasePROD
         .from('comentarios_tutoriales')
-        .select('id, tutorial_id, usuario_id, autor_nombre, contenido, fecha_creacion')
+        .select('id, tutorial_id, usuario_id, autor_nombre, contenido, fecha_creacion, tipo, resuelto')
         .eq('tutorial_id', tutorialId)
         .eq('activo', true)
         .order('fecha_creacion', { ascending: false });
@@ -303,7 +350,37 @@ function TutorialsContent() {
     } else {
       setComments([]);
       setNewComment("");
+      setNewCommentType("comentario");
+      setActiveCommentTab("comentario");
     }
+  }, [viewingTutorial?.id]);
+
+  useEffect(() => {
+    async function loadDocumentUrls() {
+      const documentos = viewingTutorial?.documentos;
+      if (!documentos || documentos.length === 0) {
+        setDocumentUrls({});
+        return;
+      }
+
+      const paths = documentos.map(d => d.path);
+      const { data, error } = await supabasePROD.storage
+        .from(DOCUMENTOS_BUCKET)
+        .createSignedUrls(paths, DOCUMENT_SIGNED_URL_TTL_SECONDS);
+
+      if (error) {
+        toast({ variant: "destructive", title: "Error", description: "No se pudieron cargar los documentos." });
+        return;
+      }
+
+      const urlMap: Record<string, string> = {};
+      data?.forEach(item => {
+        if (item.signedUrl && !item.error) urlMap[item.path ?? ''] = item.signedUrl;
+      });
+      setDocumentUrls(urlMap);
+    }
+
+    loadDocumentUrls();
   }, [viewingTutorial?.id]);
 
   const handlePostComment = async () => {
@@ -320,13 +397,16 @@ function TutorialsContent() {
           usuario_id: user.id,
           autor_nombre: user.user_metadata?.full_name || user.user_metadata?.name || user.email,
           contenido: newComment.trim(),
+          tipo: newCommentType,
         }])
         .select()
         .single();
 
       if (error) throw error;
       setComments(prev => [data, ...prev]);
+      setActiveCommentTab(newCommentType);
       setNewComment("");
+      setNewCommentType("comentario");
     } catch (error: any) {
       toast({ variant: "destructive", title: "Error", description: error.message });
     } finally {
@@ -348,6 +428,37 @@ function TutorialsContent() {
     }
   };
 
+  const handleToggleResuelto = async (comment: Comentario) => {
+    const nuevoValor = !comment.resuelto;
+    try {
+      const { error } = await supabasePROD
+        .from('comentarios_tutoriales')
+        .update({ resuelto: nuevoValor })
+        .eq('id', comment.id);
+
+      if (error) throw error;
+      setComments(prev => prev.map(c => c.id === comment.id ? { ...c, resuelto: nuevoValor } : c));
+    } catch (error: any) {
+      toast({ variant: "destructive", title: "Error", description: error.message });
+    }
+  };
+
+  const handleVideoEnded = async (tutorialId: number) => {
+    if (!userId) return;
+    try {
+      const { error } = await supabasePROD
+        .from('visualizaciones_tutoriales')
+        .upsert(
+          { tutorial_id: tutorialId, usuario_id: userId, fecha_visualizacion: new Date().toISOString() },
+          { onConflict: 'tutorial_id,usuario_id' }
+        );
+      if (error) throw error;
+    } catch (error: any) {
+      // No molestamos al usuario con un toast por esto; solo lo dejamos en consola.
+      console.error("No se pudo registrar la visualización:", error.message);
+    }
+  };
+
   const relatedTutorials = useMemo(() => {
     if (!viewingTutorial) return [];
     return tutorials
@@ -362,10 +473,13 @@ function TutorialsContent() {
         onClick={() => setViewingTutorial(tutorial)}
       >
         {!tutorial.es_espacio && tutorial.url_video ? (
-          <img
+          <Image
             src={tutorial.miniatura_url || "https://picsum.photos/seed/placeholder/600/400"}
             alt=""
-            className="object-cover w-full h-full group-hover:scale-105 transition-transform duration-500"
+            fill
+            loading="lazy"
+            sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
+            className="object-cover group-hover:scale-105 transition-transform duration-500"
           />
         ) : (
           <div className="flex flex-col items-center justify-center text-muted-foreground/40 group-hover:text-primary/40 transition-colors">
@@ -430,7 +544,10 @@ function TutorialsContent() {
         </div>
         <Tooltip>
           <TooltipTrigger asChild>
-            <CardTitle className="text-lg font-bold mt-2 line-clamp-2 leading-tight group-hover:text-primary transition-colors cursor-default">
+            <CardTitle
+              onClick={() => setViewingTutorial(tutorial)}
+              className="text-lg font-bold mt-2 line-clamp-2 leading-tight group-hover:text-primary transition-colors cursor-pointer"
+            >
               {tutorial.titulo}
             </CardTitle>
           </TooltipTrigger>
@@ -443,6 +560,13 @@ function TutorialsContent() {
   );
 
   if (viewingTutorial) {
+    const visibleComments = comments
+      .filter(c => c.tipo === activeCommentTab)
+      .sort((a, b) => {
+        if (activeCommentTab === 'duda' && a.resuelto !== b.resuelto) return a.resuelto ? 1 : -1;
+        return 0;
+      });
+
     return (
       <div className="min-h-screen bg-background p-4 md:p-6">
         <Button variant="ghost" onClick={() => setViewingTutorial(null)} className="mb-6 rounded-full">
@@ -453,7 +577,14 @@ function TutorialsContent() {
           <div className="lg:col-span-2 space-y-6 min-w-0">
             {!viewingTutorial.es_espacio && viewingTutorial.url_video ? (
               <div className="aspect-video bg-black rounded-3xl overflow-hidden relative shadow-2xl ring-1 ring-border group">
-                <video src={viewingTutorial.url_video} className="w-full h-full object-contain" controls autoPlay playsInline />
+                <video
+                  src={viewingTutorial.url_video}
+                  className="w-full h-full object-contain"
+                  controls
+                  autoPlay
+                  playsInline
+                  onEnded={() => handleVideoEnded(viewingTutorial.id)}
+                />
               </div>
             ) : (
               <div className="aspect-video bg-muted rounded-3xl flex flex-col items-center justify-center border-2 border-dashed border-primary/20 gap-4">
@@ -497,15 +628,85 @@ function TutorialsContent() {
                 <Badge variant="outline" className="px-4 py-1 text-lg rounded-full">{viewingTutorial.modulo.categoria.nombre}</Badge>
               </div>
               <p className="text-muted-foreground text-lg leading-relaxed">{viewingTutorial.descripcion}</p>
+
+              {viewingTutorial.documentos && viewingTutorial.documentos.length > 0 && (
+                <div className="space-y-2 pt-2">
+                  <h3 className="text-sm font-bold uppercase tracking-wide text-muted-foreground">Documentos</h3>
+                  <div className="flex flex-wrap gap-2">
+                    {viewingTutorial.documentos.map((doc, index) => (
+                      <button
+                        key={`${doc.path}-${index}`}
+                        type="button"
+                        onClick={() => setPreviewDocument(doc)}
+                        className="flex items-center gap-2 px-3 py-2 rounded-xl bg-muted/50 hover:bg-primary/10 border transition-colors text-sm font-medium"
+                      >
+                        <FileText className="w-4 h-4 text-primary shrink-0" />
+                        <span className="truncate max-w-[200px]">{doc.nombre}</span>
+                        <a
+                          href={documentUrls[doc.path] || undefined}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={(e) => { e.stopPropagation(); if (!documentUrls[doc.path]) e.preventDefault(); }}
+                          className={cn("shrink-0", documentUrls[doc.path] ? "text-muted-foreground hover:text-primary" : "text-muted-foreground/30 cursor-wait")}
+                          title="Descargar"
+                        >
+                          <Download className="w-3.5 h-3.5" />
+                        </a>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {normalizeChecklist(viewingTutorial.checklist).length > 0 && (
+                <div className="space-y-2 pt-2">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-sm font-bold uppercase tracking-wide text-muted-foreground flex items-center gap-2">
+                      <ListChecks className="w-4 h-4" /> Checklist
+                    </h3>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="rounded-full h-8 gap-1.5"
+                      onClick={() => downloadChecklistPdf(viewingTutorial.titulo, normalizeChecklist(viewingTutorial.checklist))}
+                    >
+                      <Download className="w-3.5 h-3.5" /> Descargar PDF
+                    </Button>
+                  </div>
+                  <div className="space-y-1.5">
+                    {normalizeChecklist(viewingTutorial.checklist).map((item, index) => (
+                      <div key={`${item}-${index}`} className="flex items-start gap-2.5 px-3 py-2 rounded-xl bg-muted/50 border text-sm">
+                        <div className="w-4 h-4 rounded border-2 border-primary/40 shrink-0 mt-0.5" />
+                        <span>{item}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
 
             <Separator />
 
-            {/* Comentarios, estilo YouTube */}
+            {/* Comentarios, dudas y propuestas de mejora, estilo YouTube */}
             <div className="space-y-6">
-              <h3 className="text-lg font-bold flex items-center gap-2">
-                <MessageCircle className="w-5 h-5" /> {comments.length} {comments.length === 1 ? "comentario" : "comentarios"}
-              </h3>
+              <div className="flex items-center justify-between flex-wrap gap-3">
+                <h3 className="text-lg font-bold flex items-center gap-2">
+                  <MessageCircle className="w-5 h-5" /> Comentarios
+                </h3>
+                <Tabs value={activeCommentTab} onValueChange={(v) => setActiveCommentTab(v as TipoComentario)}>
+                  <TabsList>
+                    <TabsTrigger value="comentario">
+                      Comentarios ({comments.filter(c => c.tipo === 'comentario').length})
+                    </TabsTrigger>
+                    <TabsTrigger value="duda">
+                      Dudas ({comments.filter(c => c.tipo === 'duda').length})
+                    </TabsTrigger>
+                    <TabsTrigger value="mejora">
+                      Mejoras ({comments.filter(c => c.tipo === 'mejora').length})
+                    </TabsTrigger>
+                  </TabsList>
+                </Tabs>
+              </div>
 
               <div className="flex gap-3">
                 <Avatar className="h-9 w-9 shrink-0">
@@ -518,23 +719,58 @@ function TutorialsContent() {
                     value={newComment}
                     onChange={e => setNewComment(e.target.value)}
                     onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handlePostComment(); } }}
-                    placeholder="Agrega un comentario..."
+                    placeholder={
+                      newCommentType === 'duda' ? "Escribe tu duda..."
+                      : newCommentType === 'mejora' ? "Escribe tu propuesta de mejora..."
+                      : "Agrega un comentario..."
+                    }
                     className="rounded-xl border-0 border-b-2 border-border rounded-b-none px-1 focus-visible:ring-0 focus-visible:border-primary"
                   />
                   {newComment.trim() && (
-                    <div className="flex justify-end gap-2">
-                      <Button variant="ghost" size="sm" className="rounded-full" onClick={() => setNewComment("")}>
-                        Cancelar
-                      </Button>
-                      <Button
-                        size="sm"
-                        className="rounded-full gap-1.5"
-                        disabled={postingComment}
-                        onClick={handlePostComment}
-                      >
-                        {postingComment ? <Loader2 className="w-4 h-4 animate-spin" /> : <SendHorizontal className="w-4 h-4" />}
-                        Comentar
-                      </Button>
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex gap-1.5">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant={newCommentType === 'comentario' ? 'default' : 'outline'}
+                          className="rounded-full h-7 text-xs"
+                          onClick={() => setNewCommentType('comentario')}
+                        >
+                          Comentario
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant={newCommentType === 'duda' ? 'default' : 'outline'}
+                          className="rounded-full h-7 text-xs"
+                          onClick={() => setNewCommentType('duda')}
+                        >
+                          Duda
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant={newCommentType === 'mejora' ? 'default' : 'outline'}
+                          className="rounded-full h-7 text-xs"
+                          onClick={() => setNewCommentType('mejora')}
+                        >
+                          Mejora
+                        </Button>
+                      </div>
+                      <div className="flex gap-2">
+                        <Button variant="ghost" size="sm" className="rounded-full" onClick={() => setNewComment("")}>
+                          Cancelar
+                        </Button>
+                        <Button
+                          size="sm"
+                          className="rounded-full gap-1.5"
+                          disabled={postingComment}
+                          onClick={handlePostComment}
+                        >
+                          {postingComment ? <Loader2 className="w-4 h-4 animate-spin" /> : <SendHorizontal className="w-4 h-4" />}
+                          {newCommentType === 'duda' ? 'Preguntar' : newCommentType === 'mejora' ? 'Enviar propuesta' : 'Comentar'}
+                        </Button>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -542,11 +778,15 @@ function TutorialsContent() {
 
               {loadingComments ? (
                 <div className="flex justify-center py-6"><Loader2 className="w-5 h-5 animate-spin text-primary" /></div>
-              ) : comments.length === 0 ? (
-                <p className="text-sm text-muted-foreground py-2">Sé el primero en comentar este proceso.</p>
+              ) : visibleComments.length === 0 ? (
+                <p className="text-sm text-muted-foreground py-2">
+                  {activeCommentTab === 'duda' ? "No hay dudas todavía. Sé el primero en preguntar."
+                    : activeCommentTab === 'mejora' ? "No hay propuestas de mejora todavía. Sé el primero en proponer una."
+                    : "Sé el primero en comentar este proceso."}
+                </p>
               ) : (
                 <div className="space-y-5">
-                  {comments.map(comment => (
+                  {visibleComments.map(comment => (
                     <div key={comment.id} className="flex gap-3 group/comment">
                       <Avatar className="h-9 w-9 shrink-0">
                         <AvatarFallback className="bg-muted text-foreground font-bold text-sm">
@@ -559,6 +799,33 @@ function TutorialsContent() {
                           <span className="text-xs text-muted-foreground shrink-0">
                             {formatDistanceToNow(new Date(comment.fecha_creacion), { addSuffix: true, locale: es })}
                           </span>
+                          {comment.tipo === 'duda' && (
+                            comment.usuario_id === userId ? (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className={cn(
+                                  "h-6 rounded-full text-[11px] gap-1 px-2 shrink-0",
+                                  comment.resuelto ? "text-green-600 hover:text-green-700" : "text-orange-600 hover:text-orange-700"
+                                )}
+                                onClick={() => handleToggleResuelto(comment)}
+                              >
+                                {comment.resuelto ? <CheckCircle2 className="w-3 h-3" /> : <Circle className="w-3 h-3" />}
+                                {comment.resuelto ? "Resuelta" : "Marcar como resuelta"}
+                              </Button>
+                            ) : (
+                              <Badge
+                                variant="secondary"
+                                className={cn(
+                                  "h-5 rounded-full text-[10px] gap-1 px-2 shrink-0 border-none",
+                                  comment.resuelto ? "bg-green-600/10 text-green-600" : "bg-orange-600/10 text-orange-600"
+                                )}
+                              >
+                                {comment.resuelto ? <CheckCircle2 className="w-3 h-3" /> : <Circle className="w-3 h-3" />}
+                                {comment.resuelto ? "Resuelta" : "Pendiente"}
+                              </Badge>
+                            )
+                          )}
                         </div>
                         <p className="text-sm text-foreground/90 mt-0.5 whitespace-pre-wrap break-words">{comment.contenido}</p>
                       </div>
@@ -596,10 +863,13 @@ function TutorialsContent() {
                   >
                     <div className="relative w-36 aspect-video rounded-lg overflow-hidden bg-muted shrink-0">
                       {!related.es_espacio && related.url_video ? (
-                        <img
+                        <Image
                           src={related.miniatura_url || "https://picsum.photos/seed/placeholder/600/400"}
                           alt=""
-                          className="object-cover w-full h-full group-hover/related:scale-105 transition-transform duration-300"
+                          fill
+                          loading="lazy"
+                          sizes="144px"
+                          className="object-cover group-hover/related:scale-105 transition-transform duration-300"
                         />
                       ) : (
                         <div className="w-full h-full flex items-center justify-center text-muted-foreground/40">
@@ -622,6 +892,61 @@ function TutorialsContent() {
             )}
           </div>
         </div>
+
+        <Dialog open={!!previewDocument} onOpenChange={(open) => !open && setPreviewDocument(null)}>
+          <DialogContent className="max-w-3xl h-[85vh] rounded-2xl flex flex-col p-0 overflow-hidden">
+            <DialogHeader className="p-4 pb-2 border-b shrink-0">
+              <DialogTitle className="flex items-center gap-2 text-base">
+                <FileText className="w-4 h-4 text-primary shrink-0" />
+                <span className="truncate">{previewDocument?.nombre}</span>
+              </DialogTitle>
+            </DialogHeader>
+            <div className="flex-1 min-h-0 bg-muted/30">
+              {previewDocument && (() => {
+                const previewUrl = documentUrls[previewDocument.path];
+                if (!previewUrl) {
+                  return (
+                    <div className="w-full h-full flex items-center justify-center">
+                      <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+                    </div>
+                  );
+                }
+
+                const kind = getDocumentPreviewKind(previewDocument.nombre);
+                if (kind === 'pdf') {
+                  return <iframe src={previewUrl} className="w-full h-full border-0" title={previewDocument.nombre} />;
+                }
+                if (kind === 'image') {
+                  return (
+                    <div className="w-full h-full flex items-center justify-center p-4">
+                      <img src={previewUrl} alt={previewDocument.nombre} className="max-w-full max-h-full object-contain rounded-lg" />
+                    </div>
+                  );
+                }
+                if (kind === 'office') {
+                  return (
+                    <iframe
+                      src={`https://docs.google.com/gview?url=${encodeURIComponent(previewUrl)}&embedded=true`}
+                      className="w-full h-full border-0"
+                      title={previewDocument.nombre}
+                    />
+                  );
+                }
+                return (
+                  <div className="w-full h-full flex flex-col items-center justify-center gap-4 text-center p-8">
+                    <FileText className="w-12 h-12 text-muted-foreground/40" />
+                    <p className="text-sm text-muted-foreground">No hay vista previa disponible para este tipo de archivo.</p>
+                    <Button asChild className="rounded-xl">
+                      <a href={previewUrl} target="_blank" rel="noopener noreferrer">
+                        <Download className="w-4 h-4 mr-2" /> Descargar
+                      </a>
+                    </Button>
+                  </div>
+                );
+              })()}
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
     );
   }
@@ -631,30 +956,40 @@ function TutorialsContent() {
     <div className="min-h-screen bg-background flex flex-col">
       <header className="border-b bg-card/70 backdrop-blur-md sticky top-0 z-10">
         <div className="container mx-auto px-4 md:px-6 h-16 flex items-center gap-3 md:gap-6">
-          {/* Marca */}
+          {/* Marca. En móvil se reemplaza por el buscador cuando está activo. */}
           <button
             onClick={() => { setSelectedCategory("all"); setSearch(""); }}
-            className="flex items-center gap-2.5 shrink-0 whitespace-nowrap"
+            className={cn("items-center gap-2.5 shrink-0 whitespace-nowrap", showMobileSearch ? "hidden md:flex" : "flex")}
           >
             <div className="bg-primary p-1.5 rounded-lg"><Video className="w-5 h-5 text-primary-foreground" /></div>
-            <span className="hidden sm:block text-lg font-bold tracking-tight leading-none">Gestor de Procesos</span>
+            <span className="block text-lg font-bold tracking-tight leading-none">Inmatmex University</span>
           </button>
 
-          {/* Buscador central, estilo YouTube */}
-          <div className="flex-1 flex justify-center min-w-0">
+          {/* Buscador central, estilo YouTube. En móvil solo se muestra al tocar "Buscar" en el navbar inferior. */}
+          <div className={cn("flex-1 justify-center min-w-0", showMobileSearch ? "flex" : "hidden md:flex")}>
             <div className="relative w-full max-w-xl">
               <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
                 placeholder="Buscar procesos..."
-                className="pl-10 h-10 rounded-full bg-muted/40 border-border/60 focus-visible:bg-background transition-colors"
+                className="pl-10 pr-10 h-10 rounded-full bg-muted/40 border-border/60 focus-visible:bg-background transition-colors"
                 value={search}
                 onChange={e => setSearch(e.target.value)}
+                autoFocus={showMobileSearch}
               />
+              {showMobileSearch && (
+                <button
+                  type="button"
+                  onClick={() => router.push('/')}
+                  className="md:hidden absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              )}
             </div>
           </div>
 
           {/* Acciones */}
-          <div className="flex items-center gap-1.5 md:gap-2 shrink-0">
+          <div className="hidden md:flex items-center gap-1.5 md:gap-2 shrink-0">
             <Button
               onClick={() => router.push('/upload')}
               className="rounded-full shadow-sm h-9 px-3 md:px-4 gap-1.5"
@@ -727,14 +1062,46 @@ function TutorialsContent() {
 
       <div className="border-b bg-muted/20">
         <div className="container mx-auto px-6 py-2 flex flex-col md:flex-row items-center gap-4">
-          <div className="overflow-x-auto no-scrollbar flex gap-2 items-center flex-1 w-full md:w-auto">
-            <Button variant={selectedCategory === "all" ? "default" : "ghost"} size="sm" className="rounded-full shrink-0" onClick={() => setSelectedCategory("all")}>Todas las Categorías</Button>
-            {loadingCategories ? (
-              <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-            ) : (
-              categories.map(cat => (
-                <Button key={cat} variant={selectedCategory === cat ? "default" : "ghost"} size="sm" className="rounded-full shrink-0" onClick={() => setSelectedCategory(cat)}>{cat}</Button>
-              ))
+          <div className="relative flex-1 w-full md:w-auto min-w-0">
+            {canScrollLeft && (
+              <>
+                <div className="pointer-events-none absolute left-0 top-0 bottom-0 w-7 z-10 bg-gradient-to-r from-muted/60 to-transparent" />
+                <button
+                  type="button"
+                  onClick={() => scrollCategories('left')}
+                  className="absolute left-0 top-1/2 -translate-y-1/2 z-20 h-7 w-7 rounded-full bg-card border shadow-sm flex items-center justify-center text-muted-foreground hover:text-primary transition-colors"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </button>
+              </>
+            )}
+
+            <div
+              ref={categoryScrollRef}
+              onScroll={checkCategoryScroll}
+              className="overflow-x-auto no-scrollbar flex gap-2 items-center w-full"
+            >
+              <Button variant={selectedCategory === "all" ? "default" : "ghost"} size="sm" className="rounded-full shrink-0" onClick={() => setSelectedCategory("all")}>Todas las Categorías</Button>
+              {loadingCategories ? (
+                <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+              ) : (
+                categories.map(cat => (
+                  <Button key={cat} variant={selectedCategory === cat ? "default" : "ghost"} size="sm" className="rounded-full shrink-0" onClick={() => setSelectedCategory(cat)}>{cat}</Button>
+                ))
+              )}
+            </div>
+
+            {canScrollRight && (
+              <>
+                <div className="pointer-events-none absolute right-0 top-0 bottom-0 w-7 z-10 bg-gradient-to-l from-muted/60 to-transparent" />
+                <button
+                  type="button"
+                  onClick={() => scrollCategories('right')}
+                  className="absolute right-0 top-1/2 -translate-y-1/2 z-20 h-7 w-7 rounded-full bg-card border shadow-sm flex items-center justify-center text-muted-foreground hover:text-primary transition-colors"
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </button>
+              </>
             )}
           </div>
           
@@ -814,24 +1181,36 @@ function TutorialsContent() {
 
               return (
                 <div key={groupName} className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-                  <button
-                    type="button"
-                    onClick={() => toggleGroup(groupName)}
-                    className="flex items-center gap-4 mb-6 w-full text-left group/header"
-                  >
-                    <div className="bg-primary/10 p-2 rounded-lg">
-                      {selectedCategory === "all" ? <FolderOpen className="w-5 h-5 text-primary" /> : <Layers className="w-5 h-5 text-primary" />}
-                    </div>
-                    <h3 className="text-xl font-bold text-foreground/90 uppercase tracking-tight">{groupName}</h3>
-                    <Separator className="flex-1" />
-                    <Badge variant="outline" className="font-mono">{groupTutorials.length}</Badge>
-                    <ChevronDown
-                      className={cn(
-                        "w-5 h-5 text-muted-foreground transition-transform group-hover/header:text-primary",
-                        isCollapsed ? "-rotate-90" : ""
-                      )}
-                    />
-                  </button>
+                  <div className="flex items-center gap-4 mb-6 w-full">
+                    <button
+                      type="button"
+                      onClick={() => toggleGroup(groupName)}
+                      className="flex items-center gap-4 flex-1 min-w-0 text-left group/header"
+                    >
+                      <div className="bg-primary/10 p-2 rounded-lg">
+                        {selectedCategory === "all" ? <FolderOpen className="w-5 h-5 text-primary" /> : <Layers className="w-5 h-5 text-primary" />}
+                      </div>
+                      <h3 className="text-xl font-bold text-foreground/90 uppercase tracking-tight">{groupName}</h3>
+                      <Separator className="flex-1" />
+                      <Badge variant="outline" className="font-mono">{groupTutorials.length}</Badge>
+                      <ChevronDown
+                        className={cn(
+                          "w-5 h-5 text-muted-foreground transition-transform group-hover/header:text-primary",
+                          isCollapsed ? "-rotate-90" : ""
+                        )}
+                      />
+                    </button>
+                    {selectedCategory !== "all" && groupTutorials[0]?.modulo?.id && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="rounded-full gap-1.5 shrink-0 border-primary/20 hover:bg-primary/5"
+                        onClick={() => router.push(`/examen/${groupTutorials[0].modulo.id}`)}
+                      >
+                        <GraduationCap className="w-4 h-4 text-primary" /> Rendir Examen
+                      </Button>
+                    )}
+                  </div>
 
                   <div
                     className={cn(
@@ -973,6 +1352,7 @@ function TutorialsContent() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
     </div>
     </TooltipProvider>
   );

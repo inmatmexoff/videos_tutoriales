@@ -9,6 +9,7 @@ const nextConfig: NextConfig = {
     ignoreDuringBuilds: true,
   },
   images: {
+    minimumCacheTTL: 2592000, // 30 dias: cada miniatura tiene una ruta unica y nunca cambia de contenido
     remotePatterns: [
       {
         protocol: 'https',
@@ -25,6 +26,12 @@ const nextConfig: NextConfig = {
       {
         protocol: 'https',
         hostname: 'picsum.photos',
+        port: '',
+        pathname: '/**',
+      },
+      {
+        protocol: 'https',
+        hostname: 'zknhnivznhifhhpexipy.supabase.co',
         port: '',
         pathname: '/**',
       },
