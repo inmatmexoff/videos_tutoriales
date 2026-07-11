@@ -19,7 +19,8 @@ import {
   Paperclip,
   X,
   ListChecks,
-  Plus
+  Plus,
+  Link2
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -30,6 +31,7 @@ import { useToast } from "@/hooks/use-toast";
 import { supabasePROD } from "@/lib/supabase";
 import { formatFileSize, MAX_DOCUMENT_SIZE_MB, DocumentoRef } from "@/lib/documentos";
 import { normalizeChecklist } from "@/lib/checklist-pdf";
+import { EnlaceSistema, ensureUrlProtocol, normalizeEnlaces } from "@/lib/enlaces";
 import { compressImage } from "@/lib/image";
 import { AdminGuard } from "@/components/admin-guard";
 import { Badge } from "@/components/ui/badge";
@@ -60,6 +62,9 @@ function EditContent() {
   const [newDocumentFiles, setNewDocumentFiles] = useState<File[]>([]);
   const [checklistItems, setChecklistItems] = useState<string[]>([]);
   const [checklistInput, setChecklistInput] = useState("");
+  const [enlaces, setEnlaces] = useState<EnlaceSistema[]>([]);
+  const [enlaceNombreInput, setEnlaceNombreInput] = useState("");
+  const [enlaceUrlInput, setEnlaceUrlInput] = useState("");
   
   const [formData, setFormData] = useState({
     titulo: "",
@@ -108,6 +113,7 @@ function EditContent() {
           setVideoPreviewUrl(data.url_video);
           setExistingDocuments(data.documentos || []);
           setChecklistItems(normalizeChecklist(data.checklist));
+          setEnlaces(normalizeEnlaces(data.enlaces_sistemas));
         }
       } catch (error: any) {
         toast({ variant: "destructive", title: "Error", description: "No se pudo cargar el tutorial." });
@@ -204,6 +210,23 @@ function EditContent() {
     setChecklistItems(prev => prev.filter((_, i) => i !== index));
   };
 
+  const handleAddEnlace = () => {
+    const nombre = enlaceNombreInput.trim();
+    const url = enlaceUrlInput.trim();
+    if (!nombre || !url) return;
+    setEnlaces(prev => [...prev, { nombre, url: ensureUrlProtocol(url) }]);
+    setEnlaceNombreInput("");
+    setEnlaceUrlInput("");
+  };
+
+  const handleRemoveEnlace = (index: number) => {
+    setEnlaces(prev => prev.filter((_, i) => i !== index));
+  };
+
+  // Evita que se guarde sin agregar el link: si hay texto en los inputs y no
+  // se dio click en "+", el link no queda en `enlaces` y se pierde.
+  const hasPendingEnlace = enlaceNombreInput.trim().length > 0 || enlaceUrlInput.trim().length > 0;
+
   const handleUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
@@ -253,6 +276,7 @@ function EditContent() {
           url_video: currentVideoUrl,
           documentos: combinedDocuments.length > 0 ? combinedDocuments : null,
           checklist: checklistItems.length > 0 ? checklistItems : null,
+          enlaces_sistemas: enlaces.length > 0 ? enlaces : null,
           duracion_segundos: parseInt(formData.duracion) || 0,
           fecha_actualizacion: new Date().toISOString(),
           es_espacio: currentVideoUrl === "" && !videoFile, // Sigue siendo espacio si aún no tiene video
@@ -539,13 +563,65 @@ function EditContent() {
                   </div>
                 )}
               </div>
+
+              <div className="space-y-2">
+                <Label className="flex items-center gap-2">
+                  <Link2 className="w-4 h-4" /> Links a sistemas (Opcional)
+                </Label>
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <Input
+                    value={enlaceNombreInput}
+                    onChange={e => setEnlaceNombreInput(e.target.value)}
+                    placeholder="Nombre (ej. Plataforma ML)"
+                    className="rounded-xl"
+                  />
+                  <Input
+                    value={enlaceUrlInput}
+                    onChange={e => setEnlaceUrlInput(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleAddEnlace(); } }}
+                    placeholder="URL (ej. https://...)"
+                    className="rounded-xl"
+                  />
+                  <Button type="button" variant="outline" className="rounded-xl shrink-0" onClick={handleAddEnlace}>
+                    <Plus className="h-4 w-4" />
+                  </Button>
+                </div>
+                {hasPendingEnlace && (
+                  <p className="text-xs text-orange-600 font-medium">
+                    Presiona "+" para agregar este link antes de guardar, o se perderá.
+                  </p>
+                )}
+
+                {enlaces.length > 0 && (
+                  <div className="space-y-2 mt-2">
+                    {enlaces.map((enlace, index) => (
+                      <div key={`${enlace.url}-${index}`} className="flex items-center justify-between gap-2 p-2.5 rounded-xl bg-muted/40 border">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <Link2 className="w-4 h-4 text-primary shrink-0" />
+                          <span className="text-xs font-bold truncate">{enlace.nombre}</span>
+                          <span className="text-[10px] text-muted-foreground truncate">{enlace.url}</span>
+                        </div>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6 shrink-0 text-muted-foreground hover:text-destructive"
+                          onClick={() => handleRemoveEnlace(index)}
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </CardContent>
 
             <CardFooter className="flex justify-end gap-3 pt-6 border-t">
               <Button type="button" variant="ghost" onClick={() => router.push('/')} className="rounded-xl">
                 Cancelar
               </Button>
-              <Button type="submit" disabled={saving} className="rounded-xl px-8 shadow-lg shadow-primary/20">
+              <Button type="submit" disabled={saving || hasPendingEnlace} className="rounded-xl px-8 shadow-lg shadow-primary/20">
                 {saving ? <Loader2 className="animate-spin mr-2 h-4 w-4" /> : <Save className="mr-2 h-4 w-4" />}
                 Guardar Cambios
               </Button>

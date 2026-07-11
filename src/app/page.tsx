@@ -39,7 +39,9 @@ import {
   ListChecks,
   Circle,
   GraduationCap,
-  X
+  X,
+  Link2,
+  ExternalLink
 } from "lucide-react";
 import { formatDistanceToNow } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -71,6 +73,7 @@ import { supabasePROD } from "@/lib/supabase";
 import { AdminGuard } from "@/components/admin-guard";
 import { DocumentoRef, getDocumentPreviewKind, DOCUMENTOS_BUCKET, DOCUMENT_SIGNED_URL_TTL_SECONDS } from "@/lib/documentos";
 import { downloadChecklistPdf, normalizeChecklist } from "@/lib/checklist-pdf";
+import { EnlaceSistema, normalizeEnlaces } from "@/lib/enlaces";
 import { cn } from "@/lib/utils";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
@@ -82,6 +85,7 @@ interface Tutorial {
   miniatura_url: string;
   documentos: DocumentoRef[] | null;
   checklist: string[] | null;
+  enlaces_sistemas: EnlaceSistema[] | null;
   duracion_segundos: number;
   es_espacio: boolean;
   tipo_contenido: 'operacion' | 'software';
@@ -187,7 +191,7 @@ function TutorialsContent() {
       const { data, error } = await supabasePROD
         .from('tutoriales')
         .select(`
-          id, titulo, descripcion, url_video, miniatura_url, documentos, checklist, duracion_segundos, es_espacio, tipo_contenido, orden,
+          id, titulo, descripcion, url_video, miniatura_url, documentos, checklist, enlaces_sistemas, duracion_segundos, es_espacio, tipo_contenido, orden,
           subcategoria:subcategorias_tutoriales (nombre),
           modulo:modulos_tutoriales (
             id,
@@ -347,6 +351,7 @@ function TutorialsContent() {
   useEffect(() => {
     if (viewingTutorial) {
       fetchComments(viewingTutorial.id);
+      window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
     } else {
       setComments([]);
       setNewComment("");
@@ -569,12 +574,30 @@ function TutorialsContent() {
 
     return (
       <div className="min-h-screen bg-background p-4 md:p-6">
-        <Button variant="ghost" onClick={() => setViewingTutorial(null)} className="mb-6 rounded-full">
-          <ArrowLeft className="mr-2 h-4 w-4" /> Volver al listado
-        </Button>
+        <button
+          type="button"
+          onClick={() => setViewingTutorial(null)}
+          className="mb-6 inline-flex items-center gap-2 rounded-full border bg-card px-4 py-2 text-sm font-semibold text-foreground shadow-sm transition-colors hover:border-primary/40 hover:bg-primary/10 hover:text-primary"
+        >
+          <ArrowLeft className="h-4 w-4" /> Volver al listado
+        </button>
         <div className="max-w-[1600px] mx-auto grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
           {/* Columna principal: video, descripción y comentarios */}
           <div className="lg:col-span-2 space-y-6 min-w-0">
+            {/* Categoría / módulo: arriba del video para que se vean bien */}
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge variant="outline" className="rounded-full px-3 py-1 text-xs md:text-sm font-extrabold uppercase tracking-wide border-primary/30 text-primary bg-primary/5">
+                {viewingTutorial.modulo.categoria.nombre}
+              </Badge>
+              <span className="text-muted-foreground/40">/</span>
+              <span className="font-bold text-sm md:text-base text-foreground/90">{viewingTutorial.modulo.nombre}</span>
+              {viewingTutorial.subcategoria && (
+                <Badge variant="secondary" className="rounded-full bg-primary/10 text-primary border-none text-xs">
+                  {viewingTutorial.subcategoria.nombre}
+                </Badge>
+              )}
+            </div>
+
             {!viewingTutorial.es_espacio && viewingTutorial.url_video ? (
               <div className="aspect-video bg-black rounded-3xl overflow-hidden relative shadow-2xl ring-1 ring-border group">
                 <video
@@ -602,32 +625,19 @@ function TutorialsContent() {
             )}
 
             <div className="space-y-4">
-              <div className="flex flex-col md:flex-row justify-between items-start gap-4">
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    <h1 className="text-3xl font-bold">{viewingTutorial.titulo}</h1>
-                    <Badge
-                      className={cn(
-                        "border-none rounded-lg flex items-center gap-1.5 px-3 py-1 text-xs font-extrabold uppercase tracking-wider shadow-sm",
-                        viewingTutorial.tipo_contenido === 'software' ? "bg-primary text-primary-foreground" : "bg-accent text-accent-foreground"
-                      )}
-                    >
-                      {viewingTutorial.tipo_contenido === 'software' ? <Monitor className="w-3.5 h-3.5" /> : <Settings className="w-3.5 h-3.5" />}
-                      {viewingTutorial.tipo_contenido === 'software' ? 'Software' : 'Operación'}
-                    </Badge>
-                  </div>
-                  <div className="text-primary font-medium flex items-center gap-2">
-                    {viewingTutorial.modulo.nombre}
-                    {viewingTutorial.subcategoria && (
-                      <Badge variant="secondary" className="rounded-full bg-primary/10 text-primary border-none text-xs">
-                        {viewingTutorial.subcategoria.nombre}
-                      </Badge>
-                    )}
-                  </div>
-                </div>
-                <Badge variant="outline" className="px-4 py-1 text-lg rounded-full">{viewingTutorial.modulo.categoria.nombre}</Badge>
+              <div className="space-y-2">
+                <h1 className="text-xl sm:text-2xl md:text-3xl font-bold leading-snug">{viewingTutorial.titulo}</h1>
+                <Badge
+                  className={cn(
+                    "border-none rounded-lg inline-flex items-center gap-1.5 px-3 py-1 text-xs font-extrabold uppercase tracking-wider shadow-sm w-fit",
+                    viewingTutorial.tipo_contenido === 'software' ? "bg-primary text-primary-foreground" : "bg-accent text-accent-foreground"
+                  )}
+                >
+                  {viewingTutorial.tipo_contenido === 'software' ? <Monitor className="w-3.5 h-3.5" /> : <Settings className="w-3.5 h-3.5" />}
+                  {viewingTutorial.tipo_contenido === 'software' ? 'Software' : 'Operación'}
+                </Badge>
               </div>
-              <p className="text-muted-foreground text-lg leading-relaxed">{viewingTutorial.descripcion}</p>
+              <p className="text-muted-foreground text-base md:text-lg leading-relaxed">{viewingTutorial.descripcion}</p>
 
               {viewingTutorial.documentos && viewingTutorial.documentos.length > 0 && (
                 <div className="space-y-2 pt-2">
@@ -653,6 +663,27 @@ function TutorialsContent() {
                           <Download className="w-3.5 h-3.5" />
                         </a>
                       </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {normalizeEnlaces(viewingTutorial.enlaces_sistemas).length > 0 && (
+                <div className="space-y-2 pt-2">
+                  <h3 className="text-sm font-bold uppercase tracking-wide text-muted-foreground">Links a sistemas</h3>
+                  <div className="flex flex-wrap gap-2">
+                    {normalizeEnlaces(viewingTutorial.enlaces_sistemas).map((enlace, index) => (
+                      <a
+                        key={`${enlace.url}-${index}`}
+                        href={enlace.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-2 px-3 py-2 rounded-xl bg-muted/50 hover:bg-primary/10 border transition-colors text-sm font-medium"
+                      >
+                        <Link2 className="w-4 h-4 text-primary shrink-0" />
+                        <span className="truncate max-w-[200px]">{enlace.nombre}</span>
+                        <ExternalLink className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                      </a>
                     ))}
                   </div>
                 </div>
