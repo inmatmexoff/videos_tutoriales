@@ -91,19 +91,28 @@ export function MobileBottomNav() {
             : { left: 0, top: 0, width: '100%', height: '100%' }}
         />
 
-        {/* Botón que aparece colapsado: solo el ícono de la página activa */}
-        <button
-          type="button"
-          onClick={() => setCollapsed(false)}
-          aria-label="Mostrar barra de navegación"
+        {/* Ícono decorativo de la página activa, visible cuando está colapsada */}
+        <div
           className={cn(
             "absolute flex items-center justify-center rounded-full text-primary-foreground transition-opacity duration-200",
-            collapsed ? "opacity-100 pointer-events-auto delay-150" : "opacity-0 pointer-events-none"
+            collapsed ? "opacity-100" : "opacity-0"
           )}
           style={{ left: 0, top: collapsedTop, width: CIRCLE, height: CIRCLE }}
         >
           <CollapsedIcon className="h-5 w-5" />
-        </button>
+        </div>
+
+        {/* Área de toque para expandir: cubre toda la franja, no solo el círculo,
+            para que un toque en cualquier parte de la barra (donde antes estaban
+            los demás botones) la expanda en vez de no hacer nada. */}
+        {collapsed && (
+          <button
+            type="button"
+            onClick={() => setCollapsed(false)}
+            aria-label="Mostrar barra de navegación"
+            className="absolute inset-0 pointer-events-auto"
+          />
+        )}
 
         {centerPercent !== null && (
           <>

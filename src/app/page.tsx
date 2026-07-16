@@ -1093,14 +1093,20 @@ function TutorialsContent() {
 
       <div className="border-b bg-muted/20">
         <div className="container mx-auto px-6 py-2 flex flex-col md:flex-row items-center gap-4">
-          <div className="relative flex-1 w-full md:w-auto min-w-0">
+          <div
+            className={cn(
+              "relative flex-1 w-full md:w-auto min-w-0 transition-[padding]",
+              canScrollLeft && "pl-8",
+              canScrollRight && "pr-8"
+            )}
+          >
             {canScrollLeft && (
               <>
-                <div className="pointer-events-none absolute left-0 top-0 bottom-0 w-7 z-10 bg-gradient-to-r from-muted/60 to-transparent" />
+                <div className="pointer-events-none absolute left-0 top-0 bottom-0 w-7 z-[1] bg-gradient-to-r from-muted/60 to-transparent" />
                 <button
                   type="button"
                   onClick={() => scrollCategories('left')}
-                  className="absolute left-0 top-1/2 -translate-y-1/2 z-20 h-7 w-7 rounded-full bg-card border shadow-sm flex items-center justify-center text-muted-foreground hover:text-primary transition-colors"
+                  className="absolute left-0 top-1/2 -translate-y-1/2 z-[2] h-7 w-7 rounded-full bg-card border shadow-sm flex items-center justify-center text-muted-foreground hover:text-primary transition-colors"
                 >
                   <ChevronLeft className="h-4 w-4" />
                 </button>
@@ -1124,11 +1130,11 @@ function TutorialsContent() {
 
             {canScrollRight && (
               <>
-                <div className="pointer-events-none absolute right-0 top-0 bottom-0 w-7 z-10 bg-gradient-to-l from-muted/60 to-transparent" />
+                <div className="pointer-events-none absolute right-0 top-0 bottom-0 w-7 z-[1] bg-gradient-to-l from-muted/60 to-transparent" />
                 <button
                   type="button"
                   onClick={() => scrollCategories('right')}
-                  className="absolute right-0 top-1/2 -translate-y-1/2 z-20 h-7 w-7 rounded-full bg-card border shadow-sm flex items-center justify-center text-muted-foreground hover:text-primary transition-colors"
+                  className="absolute right-0 top-1/2 -translate-y-1/2 z-[2] h-7 w-7 rounded-full bg-card border shadow-sm flex items-center justify-center text-muted-foreground hover:text-primary transition-colors"
                 >
                   <ChevronRight className="h-4 w-4" />
                 </button>

@@ -427,7 +427,7 @@ function AdminContent() {
         }]);
 
       if (error) throw error;
-      toast({ title: "Subcategoría creada", description: `Se ha registrado "${subcatData.nombre}"` });
+      toast({ title: "Etiqueta creada", description: `Se ha registrado "${subcatData.nombre}"` });
       setSubcatData(prev => ({ ...prev, nombre: "", descripcion: "" }));
     } catch (error: any) {
       toast({ variant: "destructive", title: "Error", description: error.message });
@@ -468,7 +468,7 @@ function AdminContent() {
           <TabsList className="grid w-full grid-cols-4 rounded-xl h-12">
             <TabsTrigger value="categorias" className="rounded-lg">Categorías</TabsTrigger>
             <TabsTrigger value="modulos" className="rounded-lg">Módulos</TabsTrigger>
-            <TabsTrigger value="subcategorias" className="rounded-lg">Subcategorías</TabsTrigger>
+            <TabsTrigger value="subcategorias" className="rounded-lg">Etiquetas</TabsTrigger>
             <TabsTrigger value="examenes" className="rounded-lg">Exámenes</TabsTrigger>
           </TabsList>
 
@@ -645,10 +645,10 @@ function AdminContent() {
             <Card className="border-none shadow-xl bg-card/50 backdrop-blur-sm">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
-                  <Boxes className="w-5 h-5 text-primary" /> Nueva Subcategoría
+                  <Boxes className="w-5 h-5 text-primary" /> Nueva Etiqueta
                 </CardTitle>
                 <CardDescription>
-                  Divide un módulo en secciones (ej: dentro de "Impresión de Etiquetas" crea "Mercado Libre", "Walmart", "Amazon"). Es opcional: solo los módulos que la necesiten tendrán subcategorías.
+                  Divide un módulo en secciones (ej: dentro de "Impresión de Etiquetas" crea "Mercado Libre", "Walmart", "Amazon"). Es opcional: solo los módulos que la necesiten tendrán etiquetas.
                 </CardDescription>
               </CardHeader>
               <form onSubmit={handleCreateSubcategory}>
@@ -687,7 +687,7 @@ function AdminContent() {
                     </Select>
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="subcat-nombre">Nombre de Subcategoría</Label>
+                    <Label htmlFor="subcat-nombre">Nombre de Etiqueta</Label>
                     <Input
                       id="subcat-nombre"
                       placeholder="Ej: Mercado Libre"
@@ -711,7 +711,7 @@ function AdminContent() {
                 <CardFooter>
                   <Button disabled={loading || !subcatData.moduloId} className="w-full rounded-xl">
                     {loading ? <Loader2 className="animate-spin mr-2" /> : <Save className="mr-2 h-4 w-4" />}
-                    Guardar Subcategoría
+                    Guardar Etiqueta
                   </Button>
                 </CardFooter>
               </form>

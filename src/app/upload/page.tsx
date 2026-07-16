@@ -208,7 +208,7 @@ function UploadContent() {
         if (error) throw error;
         setSubcategories(data || []);
       } catch (error: any) {
-        toast({ variant: "destructive", title: "Error", description: "No se pudieron cargar las subcategorías." });
+        toast({ variant: "destructive", title: "Error", description: "No se pudieron cargar las etiquetas." });
       } finally {
         setLoadingSubcategories(false);
       }
@@ -229,16 +229,18 @@ function UploadContent() {
         return;
       }
       setVideoFile(file);
-      const url = URL.createObjectURL(file);
-      setVideoPreview(url);
-      
+      setVideoPreview(URL.createObjectURL(file));
+
+      // URL aparte solo para leer la duración: revocarla no debe afectar
+      // la del preview visible (antes reusaban la misma y el preview
+      // quedaba en blanco en cuanto esta se revocaba).
       const video = document.createElement('video');
       video.preload = 'metadata';
+      video.src = URL.createObjectURL(file);
       video.onloadedmetadata = () => {
         window.URL.revokeObjectURL(video.src);
         setFormData(prev => ({ ...prev, duracion: Math.floor(video.duration).toString() }));
       };
-      video.src = url;
     }
   };
 
@@ -588,24 +590,22 @@ function UploadContent() {
                     </SelectContent>
                   </Select>
                 </div>
-                {subcategories.length > 0 && (
-                  <div className="space-y-2">
-                    <Label>Subcategoría (Opcional)</Label>
-                    <Select value={formData.subcategoriaId} onValueChange={(v) => v === "ADD_NEW_SUBCATEGORY" ? router.push('/admin') : setFormData(p => ({ ...p, subcategoriaId: v === "NONE" ? "" : v }))}>
-                      <SelectTrigger className="rounded-xl">
-                        <SelectValue placeholder={loadingSubcategories ? "Cargando..." : "Selecciona subcategoría"} />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="NONE">Sin subcategoría</SelectItem>
-                        {subcategories.map(s => <SelectItem key={s.id} value={s.id.toString()}>{s.nombre}</SelectItem>)}
-                        <SelectSeparator />
-                        <SelectItem value="ADD_NEW_SUBCATEGORY" className="text-primary font-medium focus:bg-primary/10">
-                          <div className="flex items-center gap-2"><PlusCircle className="w-4 h-4" />Crear nueva...</div>
-                        </SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                )}
+                <div className="space-y-2">
+                  <Label>Etiqueta (Opcional)</Label>
+                  <Select value={formData.subcategoriaId} onValueChange={(v) => v === "ADD_NEW_SUBCATEGORY" ? router.push('/admin') : setFormData(p => ({ ...p, subcategoriaId: v === "NONE" ? "" : v }))} disabled={!formData.moduloId}>
+                    <SelectTrigger className="rounded-xl">
+                      <SelectValue placeholder={loadingSubcategories ? "Cargando..." : subcategories.length === 0 ? "Sin etiquetas en este módulo" : "Selecciona etiqueta"} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="NONE">Sin etiqueta</SelectItem>
+                      {subcategories.map(s => <SelectItem key={s.id} value={s.id.toString()}>{s.nombre}</SelectItem>)}
+                      <SelectSeparator />
+                      <SelectItem value="ADD_NEW_SUBCATEGORY" className="text-primary font-medium focus:bg-primary/10">
+                        <div className="flex items-center gap-2"><PlusCircle className="w-4 h-4" />Crear nueva...</div>
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
 
               <div className="space-y-2">

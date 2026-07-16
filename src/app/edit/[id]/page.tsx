@@ -20,7 +20,8 @@ import {
   X,
   ListChecks,
   Plus,
-  Link2
+  Link2,
+  PlusCircle
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -36,7 +37,7 @@ import { compressImage } from "@/lib/image";
 import { AdminGuard } from "@/components/admin-guard";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectSeparator } from "@/components/ui/select";
 
 export default function EditTutorialPage() {
   return (
@@ -142,7 +143,7 @@ function EditContent() {
         if (error) throw error;
         setSubcategories(data || []);
       } catch (error: any) {
-        toast({ variant: "destructive", title: "Error", description: "No se pudieron cargar las subcategorías." });
+        toast({ variant: "destructive", title: "Error", description: "No se pudieron cargar las etiquetas." });
       } finally {
         setLoadingSubcategories(false);
       }
@@ -163,16 +164,18 @@ function EditContent() {
     const file = e.target.files?.[0];
     if (file) {
       setVideoFile(file);
-      const url = URL.createObjectURL(file);
-      setVideoPreviewUrl(url);
-      
+      setVideoPreviewUrl(URL.createObjectURL(file));
+
+      // URL aparte solo para leer la duración: revocarla no debe afectar
+      // la del preview visible (antes reusaban la misma y el preview
+      // quedaba en blanco en cuanto esta se revocaba).
       const video = document.createElement('video');
       video.preload = 'metadata';
+      video.src = URL.createObjectURL(file);
       video.onloadedmetadata = () => {
         window.URL.revokeObjectURL(video.src);
         setFormData(prev => ({ ...prev, duracion: Math.floor(video.duration).toString() }));
       };
-      video.src = url;
     }
   };
 
@@ -373,23 +376,26 @@ function EditContent() {
                 </div>
               </div>
 
-              {subcategories.length > 0 && (
-                <div className="space-y-2">
-                  <Label>Subcategoría (Opcional)</Label>
-                  <Select
-                    value={formData.subcategoriaId}
-                    onValueChange={(v) => setFormData(p => ({ ...p, subcategoriaId: v === "NONE" ? "" : v }))}
-                  >
-                    <SelectTrigger className="rounded-xl">
-                      <SelectValue placeholder={loadingSubcategories ? "Cargando..." : "Selecciona subcategoría"} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="NONE">Sin subcategoría</SelectItem>
-                      {subcategories.map(s => <SelectItem key={s.id} value={s.id.toString()}>{s.nombre}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
+              <div className="space-y-2">
+                <Label>Etiqueta (Opcional)</Label>
+                <Select
+                  value={formData.subcategoriaId}
+                  onValueChange={(v) => v === "ADD_NEW_SUBCATEGORY" ? router.push('/admin') : setFormData(p => ({ ...p, subcategoriaId: v === "NONE" ? "" : v }))}
+                  disabled={!formData.moduloId}
+                >
+                  <SelectTrigger className="rounded-xl">
+                    <SelectValue placeholder={loadingSubcategories ? "Cargando..." : subcategories.length === 0 ? "Sin etiquetas en este módulo" : "Selecciona etiqueta"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="NONE">Sin etiqueta</SelectItem>
+                    {subcategories.map(s => <SelectItem key={s.id} value={s.id.toString()}>{s.nombre}</SelectItem>)}
+                    <SelectSeparator />
+                    <SelectItem value="ADD_NEW_SUBCATEGORY" className="text-primary font-medium focus:bg-primary/10">
+                      <div className="flex items-center gap-2"><PlusCircle className="w-4 h-4" />Crear nueva...</div>
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
 
               <div className="space-y-2">
                 <Label htmlFor="descripcion">Descripción</Label>
