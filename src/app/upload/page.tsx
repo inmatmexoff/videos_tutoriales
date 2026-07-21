@@ -52,6 +52,7 @@ import {
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { supabasePROD } from "@/lib/supabase";
+import { Etiqueta, fetchEtiquetasDeModulo } from "@/lib/etiquetas";
 import { DocumentoRef, MAX_DOCUMENT_SIZE_MB, formatFileSize } from "@/lib/documentos";
 import { EnlaceSistema, ensureUrlProtocol } from "@/lib/enlaces";
 import { compressImage } from "@/lib/image";
@@ -70,18 +71,13 @@ interface Modulo {
   nombre: string;
 }
 
-interface Subcategoria {
-  id: number;
-  nombre: string;
-}
-
 interface Borrador {
   id: string;
   titulo: string;
   descripcion: string;
   categoriaId: string;
   moduloId: string;
-  subcategoriaId: string;
+  etiquetaId: string;
   tipoContenido: string;
   fecha: string;
 }
@@ -103,13 +99,13 @@ function UploadContent() {
   
   const [categories, setCategories] = useState<Categoria[]>([]);
   const [modules, setModules] = useState<Modulo[]>([]);
-  const [subcategories, setSubcategories] = useState<Subcategoria[]>([]);
+  const [etiquetas, setEtiquetas] = useState<Etiqueta[]>([]);
   const [drafts, setDrafts] = useState<Borrador[]>([]);
   const [showDraftsDialog, setShowDraftsDialog] = useState(false);
 
   const [loading, setLoading] = useState(false);
   const [loadingModules, setLoadingModules] = useState(false);
-  const [loadingSubcategories, setLoadingSubcategories] = useState(false);
+  const [loadingEtiquetas, setLoadingEtiquetas] = useState(false);
   
   const [videoFile, setVideoFile] = useState<File | null>(null);
   const [imageFile, setImageFile] = useState<File | null>(null);
@@ -127,7 +123,7 @@ function UploadContent() {
   const [formData, setFormData] = useState({
     categoriaId: "",
     moduloId: "",
-    subcategoriaId: "",
+    etiquetaId: "",
     titulo: "",
     descripcion: "",
     duracion: "0",
@@ -190,30 +186,22 @@ function UploadContent() {
   }, [formData.categoriaId, toast]);
 
   useEffect(() => {
-    async function fetchSubcategories() {
+    async function cargarEtiquetas() {
       if (!formData.moduloId) {
-        setSubcategories([]);
+        setEtiquetas([]);
         return;
       }
 
       try {
-        setLoadingSubcategories(true);
-        const { data, error } = await supabasePROD
-          .from('subcategorias_tutoriales')
-          .select('id, nombre')
-          .eq('modulo_id', formData.moduloId)
-          .eq('activo', true)
-          .order('nombre', { ascending: true });
-
-        if (error) throw error;
-        setSubcategories(data || []);
+        setLoadingEtiquetas(true);
+        setEtiquetas(await fetchEtiquetasDeModulo(formData.moduloId));
       } catch (error: any) {
         toast({ variant: "destructive", title: "Error", description: "No se pudieron cargar las etiquetas." });
       } finally {
-        setLoadingSubcategories(false);
+        setLoadingEtiquetas(false);
       }
     }
-    fetchSubcategories();
+    cargarEtiquetas();
   }, [formData.moduloId, toast]);
 
   const handleVideoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -314,7 +302,7 @@ function UploadContent() {
       descripcion: formData.descripcion,
       categoriaId: formData.categoriaId,
       moduloId: formData.moduloId,
-      subcategoriaId: formData.subcategoriaId,
+      etiquetaId: formData.etiquetaId,
       tipoContenido: formData.tipoContenido,
       fecha: new Date().toLocaleString()
     };
@@ -331,7 +319,9 @@ function UploadContent() {
       descripcion: draft.descripcion,
       categoriaId: draft.categoriaId,
       moduloId: draft.moduloId,
-      subcategoriaId: draft.subcategoriaId || "",
+      // Borradores viejos guardaban un subcategoriaId (otra tabla, otros ids):
+      // se ignora a propósito para no arrastrar un id que ya no corresponde.
+      etiquetaId: draft.etiquetaId || "",
       tipoContenido: draft.tipoContenido || "operacion",
       duracion: formData.duracion
     });
@@ -399,22 +389,22 @@ function UploadContent() {
         documentos.push({ nombre: doc.name, path: docPath });
       }
 
-      // El nuevo video se agrega al final del orden dentro de su mismo módulo/subcategoría
+      // El nuevo video se agrega al final del orden dentro de su mismo módulo/etiqueta
       let ordenQuery = supabasePROD
         .from('tutoriales')
         .select('orden')
         .eq('modulo_id', parseInt(formData.moduloId))
         .order('orden', { ascending: false })
         .limit(1);
-      ordenQuery = formData.subcategoriaId
-        ? ordenQuery.eq('subcategoria_id', parseInt(formData.subcategoriaId))
-        : ordenQuery.is('subcategoria_id', null);
+      ordenQuery = formData.etiquetaId
+        ? ordenQuery.eq('etiqueta_id', parseInt(formData.etiquetaId))
+        : ordenQuery.is('etiqueta_id', null);
       const { data: maxOrdenRows } = await ordenQuery;
       const nextOrden = maxOrdenRows && maxOrdenRows.length > 0 ? maxOrdenRows[0].orden + 1 : 0;
 
       const { data: newTutorial, error: dbError } = await supabasePROD.from('tutoriales').insert([{
         modulo_id: parseInt(formData.moduloId),
-        subcategoria_id: formData.subcategoriaId ? parseInt(formData.subcategoriaId) : null,
+        etiqueta_id: formData.etiquetaId ? parseInt(formData.etiquetaId) : null,
         titulo: formData.titulo,
         descripcion: formData.descripcion,
         url_video: videoUrl,
@@ -561,7 +551,7 @@ function UploadContent() {
                 </div>
                 <div className="space-y-2">
                   <Label>Módulo</Label>
-                  <Select value={formData.moduloId} onValueChange={(v) => v === "ADD_NEW_MODULE" ? router.push('/admin') : setFormData(p => ({ ...p, moduloId: v, subcategoriaId: "" }))} disabled={!formData.categoriaId}>
+                  <Select value={formData.moduloId} onValueChange={(v) => v === "ADD_NEW_MODULE" ? router.push('/admin') : setFormData(p => ({ ...p, moduloId: v, etiquetaId: "" }))} disabled={!formData.categoriaId}>
                     <SelectTrigger className="rounded-xl">
                       <SelectValue placeholder={loadingModules ? "Cargando..." : "Selecciona módulo"} />
                     </SelectTrigger>
@@ -592,13 +582,13 @@ function UploadContent() {
                 </div>
                 <div className="space-y-2">
                   <Label>Etiqueta (Opcional)</Label>
-                  <Select value={formData.subcategoriaId} onValueChange={(v) => v === "ADD_NEW_SUBCATEGORY" ? router.push('/admin') : setFormData(p => ({ ...p, subcategoriaId: v === "NONE" ? "" : v }))} disabled={!formData.moduloId}>
+                  <Select value={formData.etiquetaId} onValueChange={(v) => v === "ADD_NEW_SUBCATEGORY" ? router.push('/admin') : setFormData(p => ({ ...p, etiquetaId: v === "NONE" ? "" : v }))} disabled={!formData.moduloId}>
                     <SelectTrigger className="rounded-xl">
-                      <SelectValue placeholder={loadingSubcategories ? "Cargando..." : subcategories.length === 0 ? "Sin etiquetas en este módulo" : "Selecciona etiqueta"} />
+                      <SelectValue placeholder={loadingEtiquetas ? "Cargando..." : etiquetas.length === 0 ? "Sin etiquetas en este módulo" : "Selecciona etiqueta"} />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="NONE">Sin etiqueta</SelectItem>
-                      {subcategories.map(s => <SelectItem key={s.id} value={s.id.toString()}>{s.nombre}</SelectItem>)}
+                      {etiquetas.map(s => <SelectItem key={s.id} value={s.id.toString()}>{s.nombre}</SelectItem>)}
                       <SelectSeparator />
                       <SelectItem value="ADD_NEW_SUBCATEGORY" className="text-primary font-medium focus:bg-primary/10">
                         <div className="flex items-center gap-2"><PlusCircle className="w-4 h-4" />Crear nueva...</div>

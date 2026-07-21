@@ -47,7 +47,7 @@ interface Tutorial {
   duracion_segundos: number;
   tipo_contenido: 'operacion' | 'software';
   orden: number;
-  subcategoria: { nombre: string } | null;
+  etiqueta: { nombre: string } | null;
   modulo: {
     nombre: string;
     categoria: { nombre: string };
@@ -99,7 +99,7 @@ function OrdenContent() {
         .from('tutoriales')
         .select(`
           id, titulo, miniatura_url, url_video, es_espacio, duracion_segundos, tipo_contenido, orden,
-          subcategoria:subcategorias_tutoriales (nombre),
+          etiqueta:etiquetas (nombre),
           modulo:modulos_tutoriales (
             nombre,
             categoria:categorias_tutoriales (nombre)
@@ -122,7 +122,7 @@ function OrdenContent() {
     fetchTutorials();
   }, []);
 
-  // Árbol Categoría -> Módulo -> Subcategoría, para que el orden nunca mezcle
+  // Árbol Categoría -> Módulo -> Etiqueta, para que el orden nunca mezcle
   // videos de módulos distintos (a diferencia del listado principal, que agrupa
   // de forma más flexible para navegar).
   const tree = useMemo(() => {
@@ -130,7 +130,7 @@ function OrdenContent() {
     tutorials.forEach(t => {
       const catName = t.modulo?.categoria?.nombre || "General";
       const modName = t.modulo?.nombre || "General";
-      const subName = t.subcategoria?.nombre || NO_SUBCATEGORY;
+      const subName = t.etiqueta?.nombre || NO_SUBCATEGORY;
 
       if (!result[catName]) result[catName] = {};
       if (!result[catName][modName]) result[catName][modName] = {};

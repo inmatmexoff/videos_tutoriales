@@ -41,7 +41,8 @@ import {
   GraduationCap,
   X,
   Link2,
-  ExternalLink
+  ExternalLink,
+  Library
 } from "lucide-react";
 import { formatDistanceToNow } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -90,7 +91,7 @@ interface Tutorial {
   es_espacio: boolean;
   tipo_contenido: 'operacion' | 'software';
   orden: number;
-  subcategoria: {
+  etiqueta: {
     nombre: string;
   } | null;
   modulo: {
@@ -192,7 +193,7 @@ function TutorialsContent() {
         .from('tutoriales')
         .select(`
           id, titulo, descripcion, url_video, miniatura_url, documentos, checklist, enlaces_sistemas, duracion_segundos, es_espacio, tipo_contenido, orden,
-          subcategoria:subcategorias_tutoriales (nombre),
+          etiqueta:etiquetas (nombre),
           modulo:modulos_tutoriales (
             id,
             nombre,
@@ -265,8 +266,8 @@ function TutorialsContent() {
       const groupName = selectedCategory === "all"
         ? (t.modulo?.categoria?.nombre || "General")
         : (t.modulo?.nombre || "General");
-      // Dentro de cada grupo, seccionamos por subcategoría (ej: Mercado Libre, Walmart, Amazon).
-      const subgroupName = t.subcategoria?.nombre || NO_SUBCATEGORY;
+      // Dentro de cada grupo, seccionamos por etiqueta (ej: Mercado Libre, Walmart, Amazon).
+      const subgroupName = t.etiqueta?.nombre || NO_SUBCATEGORY;
 
       if (!groups[groupName]) groups[groupName] = {};
       if (!groups[groupName][subgroupName]) groups[groupName][subgroupName] = [];
@@ -525,9 +526,9 @@ function TutorialsContent() {
             <Badge variant="secondary" className="text-[10px] uppercase font-bold w-fit bg-primary/10 text-primary border-none">
               {selectedCategory === "all" ? (tutorial.modulo?.nombre || "General") : (tutorial.modulo?.categoria?.nombre || "General")}
             </Badge>
-            {tutorial.subcategoria && (
+            {tutorial.etiqueta && (
               <Badge variant="outline" className="text-[10px] uppercase font-bold w-fit border-primary/20 text-primary">
-                {tutorial.subcategoria.nombre}
+                {tutorial.etiqueta.nombre}
               </Badge>
             )}
           </div>
@@ -591,9 +592,9 @@ function TutorialsContent() {
               </Badge>
               <span className="text-muted-foreground/40">/</span>
               <span className="font-bold text-sm md:text-base text-foreground/90">{viewingTutorial.modulo.nombre}</span>
-              {viewingTutorial.subcategoria && (
+              {viewingTutorial.etiqueta && (
                 <Badge variant="secondary" className="rounded-full bg-primary/10 text-primary border-none text-xs">
-                  {viewingTutorial.subcategoria.nombre}
+                  {viewingTutorial.etiqueta.nombre}
                 </Badge>
               )}
             </div>
@@ -1034,6 +1035,20 @@ function TutorialsContent() {
                 <Button
                   variant="ghost"
                   size="icon"
+                  onClick={() => router.push('/biblioteca')}
+                  className="h-9 w-9 rounded-full text-muted-foreground hover:text-primary hover:bg-primary/10"
+                >
+                  <Library className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Biblioteca</TooltipContent>
+            </Tooltip>
+
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
                   onClick={() => router.push('/admin')}
                   className="h-9 w-9 rounded-full text-muted-foreground hover:text-primary hover:bg-primary/10"
                 >
@@ -1075,6 +1090,9 @@ function TutorialsContent() {
                   <p className="text-sm font-medium truncate">{userEmail}</p>
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => router.push('/biblioteca')} className="cursor-pointer rounded-lg">
+                  <Library className="mr-2 h-4 w-4" /> Biblioteca
+                </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => router.push('/admin')} className="cursor-pointer rounded-lg">
                   <Layers className="mr-2 h-4 w-4" /> Gestionar Estructura
                 </DropdownMenuItem>

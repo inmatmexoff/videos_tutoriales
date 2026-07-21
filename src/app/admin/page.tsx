@@ -28,6 +28,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { supabasePROD } from "@/lib/supabase";
+import { vincularEtiquetaAModulo } from "@/lib/etiquetas";
 import { cn } from "@/lib/utils";
 import { AdminGuard } from "@/components/admin-guard";
 import {
@@ -416,18 +417,11 @@ function AdminContent() {
       const { data: { user } } = await supabasePROD.auth.getUser();
       if (!user) throw new Error("No autenticado");
 
-      const { error } = await supabasePROD
-        .from('subcategorias_tutoriales')
-        .insert([{
-          modulo_id: parseInt(subcatData.moduloId),
-          nombre: subcatData.nombre,
-          descripcion: subcatData.descripcion,
-          orden: 0,
-          creado_por: user.id
-        }]);
+      // La etiqueta es global: si "Mercado Libre" ya existe se reusa y solo se
+      // vincula a este módulo, en vez de crear un duplicado por módulo.
+      await vincularEtiquetaAModulo(subcatData.nombre, parseInt(subcatData.moduloId), user.id);
 
-      if (error) throw error;
-      toast({ title: "Etiqueta creada", description: `Se ha registrado "${subcatData.nombre}"` });
+      toast({ title: "Etiqueta lista", description: `"${subcatData.nombre.trim()}" quedó disponible en este módulo.` });
       setSubcatData(prev => ({ ...prev, nombre: "", descripcion: "" }));
     } catch (error: any) {
       toast({ variant: "destructive", title: "Error", description: error.message });
@@ -648,7 +642,7 @@ function AdminContent() {
                   <Boxes className="w-5 h-5 text-primary" /> Nueva Etiqueta
                 </CardTitle>
                 <CardDescription>
-                  Divide un módulo en secciones (ej: dentro de "Impresión de Etiquetas" crea "Mercado Libre", "Walmart", "Amazon"). Es opcional: solo los módulos que la necesiten tendrán etiquetas.
+                  Las etiquetas (ej: "Mercado Libre", "Walmart", "Amazon") son globales y se comparten entre módulos. Elige un módulo y agrégale la etiqueta que necesite; si la etiqueta ya existe se reutiliza automáticamente (no se duplica).
                 </CardDescription>
               </CardHeader>
               <form onSubmit={handleCreateSubcategory}>
@@ -670,7 +664,7 @@ function AdminContent() {
                     </Select>
                   </div>
                   <div className="space-y-2">
-                    <Label>Módulo Padre</Label>
+                    <Label>Módulo</Label>
                     <Select
                       value={subcatData.moduloId}
                       onValueChange={v => setSubcatData(prev => ({ ...prev, moduloId: v }))}
@@ -694,16 +688,6 @@ function AdminContent() {
                       value={subcatData.nombre}
                       onChange={e => setSubcatData(prev => ({ ...prev, nombre: e.target.value }))}
                       required
-                      className="rounded-xl"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="subcat-desc">Descripción (Opcional)</Label>
-                    <Input
-                      id="subcat-desc"
-                      placeholder="Breve detalle..."
-                      value={subcatData.descripcion}
-                      onChange={e => setSubcatData(prev => ({ ...prev, descripcion: e.target.value }))}
                       className="rounded-xl"
                     />
                   </div>

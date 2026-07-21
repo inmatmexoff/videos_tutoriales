@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { Home, Search, Plus, Layers, User, LogOut, LucideIcon } from "lucide-react";
+import { Home, Search, Plus, Layers, User, LogOut, Library, LucideIcon } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -190,6 +190,9 @@ export function MobileBottomNav() {
                 <p className="text-sm font-medium truncate">{userEmail}</p>
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => router.push('/biblioteca')} className="cursor-pointer rounded-lg">
+                <Library className="mr-2 h-4 w-4" /> Biblioteca
+              </DropdownMenuItem>
               <DropdownMenuItem onClick={() => router.push('/admin')} className="cursor-pointer rounded-lg">
                 <Layers className="mr-2 h-4 w-4" /> Gestionar Estructura
               </DropdownMenuItem>

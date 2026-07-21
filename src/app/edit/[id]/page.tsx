@@ -30,6 +30,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { supabasePROD } from "@/lib/supabase";
+import { Etiqueta, fetchEtiquetasDeModulo } from "@/lib/etiquetas";
 import { formatFileSize, MAX_DOCUMENT_SIZE_MB, DocumentoRef } from "@/lib/documentos";
 import { normalizeChecklist } from "@/lib/checklist-pdf";
 import { EnlaceSistema, ensureUrlProtocol, normalizeEnlaces } from "@/lib/enlaces";
@@ -74,13 +75,13 @@ function EditContent() {
     videoUrl: "",
     duracion: "",
     moduloId: null as number | null,
-    subcategoriaId: "",
+    etiquetaId: "",
     esEspacio: false,
     tipoContenido: "operacion"
   });
 
-  const [subcategories, setSubcategories] = useState<{ id: number; nombre: string }[]>([]);
-  const [loadingSubcategories, setLoadingSubcategories] = useState(false);
+  const [etiquetas, setEtiquetas] = useState<Etiqueta[]>([]);
+  const [loadingEtiquetas, setLoadingEtiquetas] = useState(false);
 
   useEffect(() => {
     async function fetchTutorial() {
@@ -106,7 +107,7 @@ function EditContent() {
             videoUrl: data.url_video || "",
             duracion: data.duracion_segundos?.toString() || "0",
             moduloId: data.modulo_id,
-            subcategoriaId: data.subcategoria_id ? data.subcategoria_id.toString() : "",
+            etiquetaId: data.etiqueta_id ? data.etiqueta_id.toString() : "",
             esEspacio: data.es_espacio || false,
             tipoContenido: data.tipo_contenido || "operacion"
           });
@@ -127,28 +128,21 @@ function EditContent() {
   }, [id, toast, router]);
 
   useEffect(() => {
-    async function fetchSubcategories() {
+    async function cargarEtiquetas() {
       if (!formData.moduloId) {
-        setSubcategories([]);
+        setEtiquetas([]);
         return;
       }
       try {
-        setLoadingSubcategories(true);
-        const { data, error } = await supabasePROD
-          .from('subcategorias_tutoriales')
-          .select('id, nombre')
-          .eq('modulo_id', formData.moduloId)
-          .eq('activo', true)
-          .order('nombre', { ascending: true });
-        if (error) throw error;
-        setSubcategories(data || []);
+        setLoadingEtiquetas(true);
+        setEtiquetas(await fetchEtiquetasDeModulo(formData.moduloId));
       } catch (error: any) {
         toast({ variant: "destructive", title: "Error", description: "No se pudieron cargar las etiquetas." });
       } finally {
-        setLoadingSubcategories(false);
+        setLoadingEtiquetas(false);
       }
     }
-    fetchSubcategories();
+    cargarEtiquetas();
   }, [formData.moduloId, toast]);
 
   const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -284,7 +278,7 @@ function EditContent() {
           fecha_actualizacion: new Date().toISOString(),
           es_espacio: currentVideoUrl === "" && !videoFile, // Sigue siendo espacio si aún no tiene video
           tipo_contenido: formData.tipoContenido,
-          subcategoria_id: formData.subcategoriaId ? parseInt(formData.subcategoriaId) : null
+          etiqueta_id: formData.etiquetaId ? parseInt(formData.etiquetaId) : null
         })
         .eq('id', id);
 
@@ -379,16 +373,16 @@ function EditContent() {
               <div className="space-y-2">
                 <Label>Etiqueta (Opcional)</Label>
                 <Select
-                  value={formData.subcategoriaId}
-                  onValueChange={(v) => v === "ADD_NEW_SUBCATEGORY" ? router.push('/admin') : setFormData(p => ({ ...p, subcategoriaId: v === "NONE" ? "" : v }))}
+                  value={formData.etiquetaId}
+                  onValueChange={(v) => v === "ADD_NEW_SUBCATEGORY" ? router.push('/admin') : setFormData(p => ({ ...p, etiquetaId: v === "NONE" ? "" : v }))}
                   disabled={!formData.moduloId}
                 >
                   <SelectTrigger className="rounded-xl">
-                    <SelectValue placeholder={loadingSubcategories ? "Cargando..." : subcategories.length === 0 ? "Sin etiquetas en este módulo" : "Selecciona etiqueta"} />
+                    <SelectValue placeholder={loadingEtiquetas ? "Cargando..." : etiquetas.length === 0 ? "Sin etiquetas en este módulo" : "Selecciona etiqueta"} />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="NONE">Sin etiqueta</SelectItem>
-                    {subcategories.map(s => <SelectItem key={s.id} value={s.id.toString()}>{s.nombre}</SelectItem>)}
+                    {etiquetas.map(s => <SelectItem key={s.id} value={s.id.toString()}>{s.nombre}</SelectItem>)}
                     <SelectSeparator />
                     <SelectItem value="ADD_NEW_SUBCATEGORY" className="text-primary font-medium focus:bg-primary/10">
                       <div className="flex items-center gap-2"><PlusCircle className="w-4 h-4" />Crear nueva...</div>
