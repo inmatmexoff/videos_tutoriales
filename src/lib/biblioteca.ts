@@ -8,6 +8,37 @@ import { DOCUMENTOS_BUCKET, DOCUMENT_SIGNED_URL_TTL_SECONDS } from "@/lib/docume
 
 export const BIBLIOTECA_PREFIX = "biblioteca";
 
+// Distingue manuales/PDFs ('documento') de archivos de código descargables
+// ('codigo': .zip, .py, .sql, .xlsm con macros...). Ambos viven en la misma
+// tabla/bucket; solo cambia el filtro y el ícono en la UI.
+export type TipoBiblioteca = 'documento' | 'codigo';
+
+// Extensiones que sugieren "código" al subir (autodetección, editable por el usuario).
+// Incluye comprimidos (.zip/.rar), scripts, y archivos de config (.env/.ini/.toml...).
+const CODIGO_EXTENSIONS = [
+  'zip', 'rar', '7z', 'tar', 'gz', 'py', 'js', 'ts', 'json', 'sql', 'sh', 'bat', 'ps1',
+  'html', 'css', 'php', 'java', 'cs', 'rb', 'go', 'xml', 'yml', 'yaml',
+  'ipynb', 'xlsm', 'gs', 'vba', 'bas',
+  'env', 'ini', 'toml', 'cfg', 'conf', 'properties',
+];
+
+export function detectarTipo(nombreArchivo: string): TipoBiblioteca {
+  const ext = nombreArchivo.split('.').pop()?.toLowerCase() || '';
+  return CODIGO_EXTENSIONS.includes(ext) ? 'codigo' : 'documento';
+}
+
+// Detecta archivos que probablemente contengan secretos (llaves, contraseñas,
+// tokens). Se usa solo para ADVERTIR al subir: en esta biblioteca cualquier
+// usuario autenticado puede descargar cualquier archivo (RLS sin roles).
+const SENSIBLE_EXTENSIONS = ['env', 'pem', 'key', 'p12', 'pfx', 'keystore', 'ppk', 'crt'];
+
+export function esArchivoSensible(nombreArchivo: string): boolean {
+  const lower = nombreArchivo.toLowerCase();
+  const ext = lower.split('.').pop() || '';
+  if (SENSIBLE_EXTENSIONS.includes(ext)) return true;
+  return /(secret|credential|contrase|password|token|apikey|api[-_]?key)/.test(lower);
+}
+
 export interface BibliotecaDoc {
   id: number;
   titulo: string;
@@ -16,6 +47,7 @@ export interface BibliotecaDoc {
   nombre_archivo: string;
   mime_type: string | null;
   tamano_bytes: number | null;
+  tipo: TipoBiblioteca;
   modulo_id: number | null;
   etiqueta_id: number | null;
   tutorial_id: number | null;
@@ -31,7 +63,7 @@ export async function fetchBibliotecaDocs(): Promise<BibliotecaDoc[]> {
   const { data, error } = await supabasePROD
     .from('biblioteca_documentos')
     .select(`
-      id, titulo, descripcion, path, nombre_archivo, mime_type, tamano_bytes,
+      id, titulo, descripcion, path, nombre_archivo, mime_type, tamano_bytes, tipo,
       modulo_id, etiqueta_id, tutorial_id, fecha_creacion,
       modulo:modulos_tutoriales ( nombre, categoria:categorias_tutoriales (nombre) ),
       etiqueta:etiquetas (nombre)
@@ -70,6 +102,7 @@ export interface NuevoBibliotecaDoc {
   nombre_archivo: string;
   mime_type: string | null;
   tamano_bytes: number | null;
+  tipo: TipoBiblioteca;
   modulo_id: number | null;
   etiqueta_id: number | null;
   creado_por: string;

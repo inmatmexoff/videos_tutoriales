@@ -30,6 +30,9 @@ create table if not exists public.biblioteca_documentos (
   nombre_archivo text not null,
   mime_type text,
   tamano_bytes bigint,
+  -- 'documento' (PDF/manual) o 'codigo' (.zip/.py/.sql/.xlsm con macros...).
+  -- Mismo almacenamiento; solo cambia el filtro y el icono en la UI.
+  tipo text not null default 'documento',
   -- Ubicacion en la taxonomia. TODAS opcionales: un documento puede ser
   -- transversal (modulo_id null) o aplicar a un marketplace concreto sin
   -- importar el modulo (solo etiqueta_id).
@@ -44,6 +47,10 @@ create table if not exists public.biblioteca_documentos (
   fecha_creacion timestamptz not null default now(),
   fecha_actualizacion timestamptz
 );
+
+-- Para tablas ya creadas antes de agregar la columna (idempotente):
+alter table public.biblioteca_documentos
+  add column if not exists tipo text not null default 'documento';
 
 create index if not exists idx_biblioteca_modulo   on public.biblioteca_documentos(modulo_id);
 create index if not exists idx_biblioteca_etiqueta on public.biblioteca_documentos(etiqueta_id);

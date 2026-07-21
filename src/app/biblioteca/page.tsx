@@ -11,6 +11,7 @@ import {
   FileSpreadsheet,
   Image as ImageIcon,
   File as FileIcon,
+  FileCode2,
   Download,
   Trash2,
   Loader2,
@@ -23,6 +24,7 @@ import {
   ExternalLink,
   PlusCircle,
   Check,
+  ShieldAlert,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -57,11 +59,15 @@ import {
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
 import { supabasePROD } from "@/lib/supabase";
+import { cn } from "@/lib/utils";
 import { AdminGuard } from "@/components/admin-guard";
 import { MAX_DOCUMENT_SIZE_MB, formatFileSize, getDocumentPreviewKind } from "@/lib/documentos";
 import { Etiqueta, fetchEtiquetasDeModulo, vincularEtiquetaAModulo } from "@/lib/etiquetas";
 import {
   BibliotecaDoc,
+  TipoBiblioteca,
+  detectarTipo,
+  esArchivoSensible,
   fetchBibliotecaDocs,
   subirArchivoBiblioteca,
   crearBibliotecaDoc,
@@ -75,7 +81,8 @@ const CREAR_NUEVO = "__crear_nuevo__";
 
 type CampoTaxonomia = 'categoria' | 'modulo' | 'etiqueta';
 
-function iconoPorArchivo(nombre: string) {
+function iconoPorArchivo(nombre: string, tipo?: TipoBiblioteca) {
+  if (tipo === 'codigo') return FileCode2;
   switch (getDocumentPreviewKind(nombre)) {
     case 'pdf': return FileText;
     case 'image': return ImageIcon;
@@ -101,6 +108,7 @@ function BibliotecaContent() {
 
   // Filtros del listado
   const [search, setSearch] = useState("");
+  const [filtroTipo, setFiltroTipo] = useState<'todos' | TipoBiblioteca>('todos');
   const [filtroModulo, setFiltroModulo] = useState("all");
   const [filtroEtiqueta, setFiltroEtiqueta] = useState("all");
 
@@ -108,7 +116,8 @@ function BibliotecaContent() {
   const [showUpload, setShowUpload] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [file, setFile] = useState<File | null>(null);
-  const [form, setForm] = useState({ titulo: "", descripcion: "", categoriaId: "", moduloId: "", etiquetaId: "" });
+  const [archivoSensible, setArchivoSensible] = useState(false);
+  const [form, setForm] = useState({ titulo: "", descripcion: "", categoriaId: "", moduloId: "", etiquetaId: "", tipo: 'documento' as TipoBiblioteca });
 
   const [categorias, setCategorias] = useState<{ id: number; nombre: string }[]>([]);
   const [modulos, setModulos] = useState<{ id: number; nombre: string }[]>([]);
@@ -182,6 +191,7 @@ function BibliotecaContent() {
   const docsFiltrados = useMemo(() => {
     const q = search.trim().toLowerCase();
     return docs.filter(d => {
+      if (filtroTipo !== 'todos' && d.tipo !== filtroTipo) return false;
       if (q && !`${d.titulo} ${d.descripcion || ""} ${d.nombre_archivo}`.toLowerCase().includes(q)) return false;
       if (filtroModulo !== "all") {
         if (filtroModulo === SIN_MODULO ? d.modulo_id !== null : d.modulo_id?.toString() !== filtroModulo) return false;
@@ -191,7 +201,7 @@ function BibliotecaContent() {
       }
       return true;
     });
-  }, [docs, search, filtroModulo, filtroEtiqueta]);
+  }, [docs, search, filtroTipo, filtroModulo, filtroEtiqueta]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
@@ -202,13 +212,20 @@ function BibliotecaContent() {
       return;
     }
     setFile(f);
-    // Si no hay título aún, precargar con el nombre del archivo (sin extensión).
-    setForm(prev => prev.titulo ? prev : { ...prev, titulo: f.name.replace(/\.[^.]+$/, "") });
+    setArchivoSensible(esArchivoSensible(f.name));
+    // Autodetecta el tipo por extensión (editable) y, si no hay título aún,
+    // precarga con el nombre del archivo sin extensión.
+    setForm(prev => ({
+      ...prev,
+      tipo: detectarTipo(f.name),
+      titulo: prev.titulo || f.name.replace(/\.[^.]+$/, ""),
+    }));
   };
 
   const resetForm = () => {
-    setForm({ titulo: "", descripcion: "", categoriaId: "", moduloId: "", etiquetaId: "" });
+    setForm({ titulo: "", descripcion: "", categoriaId: "", moduloId: "", etiquetaId: "", tipo: 'documento' });
     setFile(null);
+    setArchivoSensible(false);
     setCreando(null);
     setNuevoNombre("");
   };
@@ -231,6 +248,7 @@ function BibliotecaContent() {
         nombre_archivo: file.name,
         mime_type: file.type || null,
         tamano_bytes: file.size,
+        tipo: form.tipo,
         modulo_id: form.moduloId ? parseInt(form.moduloId) : null,
         etiqueta_id: form.etiquetaId ? parseInt(form.etiquetaId) : null,
         creado_por: user.id,
@@ -375,8 +393,29 @@ function BibliotecaContent() {
           </div>
 
           <Button onClick={() => setShowUpload(true)} className="rounded-full shadow-sm gap-1.5 w-full sm:w-auto">
-            <Plus className="h-4 w-4" /> Subir documento
+            <Plus className="h-4 w-4" /> Subir archivo
           </Button>
+        </div>
+
+        {/* Segmentado por tipo */}
+        <div className="inline-flex items-center gap-1 p-1 bg-muted/50 rounded-xl w-full sm:w-auto">
+          {([
+            { v: 'todos', label: 'Todos', Icon: Library },
+            { v: 'documento', label: 'Documentos', Icon: FileText },
+            { v: 'codigo', label: 'Código', Icon: FileCode2 },
+          ] as const).map(({ v, label, Icon }) => (
+            <button
+              key={v}
+              type="button"
+              onClick={() => setFiltroTipo(v)}
+              className={cn(
+                "flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors flex-1 sm:flex-none",
+                filtroTipo === v ? "bg-card shadow-sm text-primary" : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              <Icon className="h-3.5 w-3.5" /> {label}
+            </button>
+          ))}
         </div>
 
         {/* Filtros */}
@@ -432,7 +471,7 @@ function BibliotecaContent() {
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {docsFiltrados.map(doc => {
-              const Icono = iconoPorArchivo(doc.nombre_archivo);
+              const Icono = iconoPorArchivo(doc.nombre_archivo, doc.tipo);
               return (
                 <Card key={doc.id} className="border-none shadow-md bg-card/50 backdrop-blur-sm hover:shadow-lg transition-shadow group">
                   <CardContent className="p-4 flex flex-col h-full">
@@ -465,6 +504,11 @@ function BibliotecaContent() {
                     )}
 
                     <div className="flex flex-wrap items-center gap-1 mb-3 mt-auto">
+                      {doc.tipo === 'codigo' && (
+                        <Badge className="text-[9px] uppercase font-bold bg-primary text-primary-foreground border-none">
+                          <FileCode2 className="w-2.5 h-2.5 mr-1" />Código
+                        </Badge>
+                      )}
                       {doc.modulo?.categoria?.nombre && (
                         <Badge variant="secondary" className="text-[9px] uppercase font-bold bg-primary/10 text-primary border-none">
                           {doc.modulo.categoria.nombre}
@@ -503,7 +547,7 @@ function BibliotecaContent() {
         <DialogContent className="max-w-lg rounded-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Library className="w-5 h-5 text-primary" /> Subir documento
+              <Library className="w-5 h-5 text-primary" /> Subir archivo
             </DialogTitle>
             <DialogDescription>
               Agrega un archivo a la biblioteca. La categoría, módulo y etiqueta son opcionales (úsalas para organizarlo).
@@ -516,7 +560,6 @@ function BibliotecaContent() {
               <div className="flex items-center justify-center w-full h-24 border-2 border-dashed rounded-xl cursor-pointer bg-muted/30 hover:bg-muted/50 transition-all relative overflow-hidden">
                 <input
                   type="file"
-                  accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.png,.jpg,.jpeg,.zip"
                   className="absolute inset-0 opacity-0 cursor-pointer"
                   onChange={handleFileChange}
                 />
@@ -525,6 +568,41 @@ function BibliotecaContent() {
                   <p className="text-xs font-medium truncate max-w-[300px]">{file ? file.name : `Selecciona un archivo (máx. ${MAX_DOCUMENT_SIZE_MB}MB)`}</p>
                   {file && <p className="text-[10px] text-muted-foreground mt-0.5">{formatFileSize(file.size)}</p>}
                 </div>
+              </div>
+            </div>
+
+            {archivoSensible && (
+              <div className="flex gap-2.5 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3">
+                <ShieldAlert className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
+                <div className="text-xs text-amber-700 dark:text-amber-500 space-y-1">
+                  <p className="font-bold">Este archivo parece contener secretos.</p>
+                  <p>
+                    Cualquier persona que inicie sesión podrá descargarlo. No subas llaves ni contraseñas
+                    reales aquí; usa un gestor de secretos y comparte solo una plantilla de ejemplo.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            <div className="space-y-2">
+              <Label className="text-xs">Tipo</Label>
+              <div className="inline-flex items-center gap-1 p-1 bg-muted/50 rounded-xl w-full">
+                {([
+                  { v: 'documento' as TipoBiblioteca, label: 'Documento', Icon: FileText },
+                  { v: 'codigo' as TipoBiblioteca, label: 'Código', Icon: FileCode2 },
+                ]).map(({ v, label, Icon }) => (
+                  <button
+                    key={v}
+                    type="button"
+                    onClick={() => setForm(p => ({ ...p, tipo: v }))}
+                    className={cn(
+                      "flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors flex-1",
+                      form.tipo === v ? "bg-card shadow-sm text-primary" : "text-muted-foreground hover:text-foreground"
+                    )}
+                  >
+                    <Icon className="h-3.5 w-3.5" /> {label}
+                  </button>
+                ))}
               </div>
             </div>
 
@@ -648,7 +726,7 @@ function BibliotecaContent() {
         <DialogContent className="max-w-4xl rounded-2xl p-0 overflow-hidden gap-0">
           <DialogHeader className="p-4 pb-3 border-b">
             <DialogTitle className="flex items-center gap-2 pr-8 text-base">
-              {previewDoc && React.createElement(iconoPorArchivo(previewDoc.nombre_archivo), { className: "w-4 h-4 text-primary shrink-0" })}
+              {previewDoc && React.createElement(iconoPorArchivo(previewDoc.nombre_archivo, previewDoc.tipo), { className: "w-4 h-4 text-primary shrink-0" })}
               <span className="truncate">{previewDoc?.titulo}</span>
             </DialogTitle>
             <DialogDescription className="truncate">{previewDoc?.nombre_archivo}</DialogDescription>
@@ -665,9 +743,11 @@ function BibliotecaContent() {
               <iframe src={previewUrl} title={previewDoc.titulo} className="w-full h-[70vh] bg-white" />
             ) : (
               <div className="text-center p-10 text-muted-foreground">
-                {React.createElement(iconoPorArchivo(previewDoc.nombre_archivo), { className: "w-14 h-14 mx-auto mb-3 opacity-30" })}
-                <p className="font-medium">Este tipo de archivo no se puede previsualizar aquí.</p>
-                <p className="text-sm mt-1">Ábrelo o descárgalo para verlo.</p>
+                {React.createElement(iconoPorArchivo(previewDoc.nombre_archivo, previewDoc.tipo), { className: "w-14 h-14 mx-auto mb-3 opacity-30" })}
+                <p className="font-medium">
+                  {previewDoc.tipo === 'codigo' ? "Archivo de código." : "Este tipo de archivo no se puede previsualizar aquí."}
+                </p>
+                <p className="text-sm mt-1">Descárgalo para usarlo.</p>
               </div>
             )}
           </div>
