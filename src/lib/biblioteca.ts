@@ -43,10 +43,12 @@ export async function fetchBibliotecaDocs(): Promise<BibliotecaDoc[]> {
 }
 
 // URL temporal (firmada) para ver o descargar un documento privado.
-export async function getBibliotecaSignedUrl(path: string): Promise<string> {
+// download=true fuerza la descarga (Content-Disposition: attachment); si es
+// false el navegador lo muestra inline (necesario para la vista previa).
+export async function getBibliotecaSignedUrl(path: string, download = false): Promise<string> {
   const { data, error } = await supabasePROD.storage
     .from(DOCUMENTOS_BUCKET)
-    .createSignedUrl(path, DOCUMENT_SIGNED_URL_TTL_SECONDS);
+    .createSignedUrl(path, DOCUMENT_SIGNED_URL_TTL_SECONDS, download ? { download: true } : undefined);
   if (error) throw error;
   return data.signedUrl;
 }

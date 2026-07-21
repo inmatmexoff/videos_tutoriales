@@ -17,9 +17,12 @@ import {
   Save,
   Paperclip,
   X,
-  Filter,
   Tag,
   Layers,
+  Eye,
+  ExternalLink,
+  PlusCircle,
+  Check,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -33,6 +36,7 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
+  SelectSeparator,
 } from "@/components/ui/select";
 import {
   Dialog,
@@ -55,7 +59,7 @@ import { useToast } from "@/hooks/use-toast";
 import { supabasePROD } from "@/lib/supabase";
 import { AdminGuard } from "@/components/admin-guard";
 import { MAX_DOCUMENT_SIZE_MB, formatFileSize, getDocumentPreviewKind } from "@/lib/documentos";
-import { Etiqueta, fetchEtiquetasDeModulo } from "@/lib/etiquetas";
+import { Etiqueta, fetchEtiquetasDeModulo, vincularEtiquetaAModulo } from "@/lib/etiquetas";
 import {
   BibliotecaDoc,
   fetchBibliotecaDocs,
@@ -67,6 +71,9 @@ import {
 
 const SIN_MODULO = "__sin_modulo__";
 const SIN_ETIQUETA = "__sin_etiqueta__";
+const CREAR_NUEVO = "__crear_nuevo__";
+
+type CampoTaxonomia = 'categoria' | 'modulo' | 'etiqueta';
 
 function iconoPorArchivo(nombre: string) {
   switch (getDocumentPreviewKind(nombre)) {
@@ -109,6 +116,16 @@ function BibliotecaContent() {
 
   // Borrado
   const [docAEliminar, setDocAEliminar] = useState<BibliotecaDoc | null>(null);
+
+  // Vista previa
+  const [previewDoc, setPreviewDoc] = useState<BibliotecaDoc | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string>("");
+  const [previewLoading, setPreviewLoading] = useState(false);
+
+  // Creación inline de categoría/módulo/etiqueta desde el modal de carga
+  const [creando, setCreando] = useState<CampoTaxonomia | null>(null);
+  const [nuevoNombre, setNuevoNombre] = useState("");
+  const [creandoLoading, setCreandoLoading] = useState(false);
 
   const cargarDocs = async () => {
     try {
@@ -192,6 +209,8 @@ function BibliotecaContent() {
   const resetForm = () => {
     setForm({ titulo: "", descripcion: "", categoriaId: "", moduloId: "", etiquetaId: "" });
     setFile(null);
+    setCreando(null);
+    setNuevoNombre("");
   };
 
   const handleUpload = async (e: React.FormEvent) => {
@@ -228,15 +247,6 @@ function BibliotecaContent() {
     }
   };
 
-  const handleAbrir = async (doc: BibliotecaDoc) => {
-    try {
-      const url = await getBibliotecaSignedUrl(doc.path);
-      window.open(url, '_blank', 'noopener,noreferrer');
-    } catch (error: any) {
-      toast({ variant: "destructive", title: "Error", description: "No se pudo abrir el documento." });
-    }
-  };
-
   const handleEliminar = async () => {
     if (!docAEliminar) return;
     try {
@@ -249,6 +259,101 @@ function BibliotecaContent() {
       setDocAEliminar(null);
     }
   };
+
+  const abrirPreview = async (doc: BibliotecaDoc) => {
+    setPreviewDoc(doc);
+    setPreviewUrl("");
+    setPreviewLoading(true);
+    try {
+      setPreviewUrl(await getBibliotecaSignedUrl(doc.path));
+    } catch (error: any) {
+      toast({ variant: "destructive", title: "Error", description: "No se pudo cargar la vista previa." });
+    } finally {
+      setPreviewLoading(false);
+    }
+  };
+
+  const descargar = async (doc: BibliotecaDoc) => {
+    try {
+      window.open(await getBibliotecaSignedUrl(doc.path, true), '_blank', 'noopener,noreferrer');
+    } catch (error: any) {
+      toast({ variant: "destructive", title: "Error", description: "No se pudo descargar el documento." });
+    }
+  };
+
+  const iniciarCreacion = (campo: CampoTaxonomia) => {
+    setNuevoNombre("");
+    setCreando(campo);
+  };
+
+  const confirmarCreacion = async () => {
+    const nombre = nuevoNombre.trim();
+    if (!nombre || !creando) return;
+    setCreandoLoading(true);
+    try {
+      const { data: { user } } = await supabasePROD.auth.getUser();
+      if (!user) throw new Error("Usuario no autenticado");
+
+      if (creando === 'categoria') {
+        const { data, error } = await supabasePROD
+          .from('categorias_tutoriales')
+          .insert([{ nombre, descripcion: "", orden: 0, creado_por: user.id }])
+          .select('id, nombre')
+          .single();
+        if (error) throw error;
+        setCategorias(prev => [...prev, data].sort((a, b) => a.nombre.localeCompare(b.nombre)));
+        setForm(p => ({ ...p, categoriaId: data.id.toString(), moduloId: "", etiquetaId: "" }));
+      } else if (creando === 'modulo') {
+        if (!form.categoriaId) throw new Error("Primero elige una categoría.");
+        const { data, error } = await supabasePROD
+          .from('modulos_tutoriales')
+          .insert([{ categoria_id: parseInt(form.categoriaId), nombre, descripcion: "", orden: 0, creado_por: user.id }])
+          .select('id, nombre')
+          .single();
+        if (error) throw error;
+        setModulos(prev => [...prev, data].sort((a, b) => a.nombre.localeCompare(b.nombre)));
+        setForm(p => ({ ...p, moduloId: data.id.toString(), etiquetaId: "" }));
+      } else if (creando === 'etiqueta') {
+        if (!form.moduloId) throw new Error("Primero elige un módulo.");
+        const et = await vincularEtiquetaAModulo(nombre, parseInt(form.moduloId), user.id);
+        setEtiquetasForm(prev =>
+          prev.some(e => e.id === et.id) ? prev : [...prev, et].sort((a, b) => a.nombre.localeCompare(b.nombre))
+        );
+        setForm(p => ({ ...p, etiquetaId: et.id.toString() }));
+      }
+
+      setCreando(null);
+      setNuevoNombre("");
+    } catch (error: any) {
+      toast({ variant: "destructive", title: "Error", description: error.message });
+    } finally {
+      setCreandoLoading(false);
+    }
+  };
+
+  // Fila reutilizable: input + botones para crear una categoría/módulo/etiqueta
+  // sin salir del modal. Se muestra cuando el usuario elige "Crear nueva…".
+  const filaCrear = (placeholder: string) => (
+    <div className="flex gap-1.5">
+      <Input
+        autoFocus
+        value={nuevoNombre}
+        onChange={e => setNuevoNombre(e.target.value)}
+        onKeyDown={e => {
+          if (e.key === 'Enter') { e.preventDefault(); confirmarCreacion(); }
+          if (e.key === 'Escape') { e.preventDefault(); setCreando(null); }
+        }}
+        placeholder={placeholder}
+        className="rounded-xl h-9"
+      />
+      <Button type="button" size="icon" className="h-9 w-9 shrink-0 rounded-xl" onClick={confirmarCreacion} disabled={creandoLoading || !nuevoNombre.trim()}>
+        {creandoLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+      </Button>
+      <Button type="button" size="icon" variant="ghost" className="h-9 w-9 shrink-0 rounded-xl" onClick={() => setCreando(null)}>
+        <X className="h-4 w-4" />
+      </Button>
+    </div>
+  );
 
   return (
     <div className="min-h-screen bg-background p-4 md:p-8 pb-28 md:pb-8">
@@ -332,13 +437,19 @@ function BibliotecaContent() {
                 <Card key={doc.id} className="border-none shadow-md bg-card/50 backdrop-blur-sm hover:shadow-lg transition-shadow group">
                   <CardContent className="p-4 flex flex-col h-full">
                     <div className="flex items-start gap-3 mb-3">
-                      <div className="p-2.5 bg-primary/10 rounded-xl shrink-0">
-                        <Icono className="w-5 h-5 text-primary" />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <h3 className="font-bold text-sm leading-tight line-clamp-2">{doc.titulo}</h3>
-                        <p className="text-[11px] text-muted-foreground truncate mt-0.5">{doc.nombre_archivo}</p>
-                      </div>
+                      <button
+                        type="button"
+                        onClick={() => abrirPreview(doc)}
+                        className="flex items-start gap-3 min-w-0 flex-1 text-left group/title"
+                      >
+                        <div className="p-2.5 bg-primary/10 rounded-xl shrink-0">
+                          <Icono className="w-5 h-5 text-primary" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <h3 className="font-bold text-sm leading-tight line-clamp-2 group-hover/title:text-primary transition-colors">{doc.titulo}</h3>
+                          <p className="text-[11px] text-muted-foreground truncate mt-0.5">{doc.nombre_archivo}</p>
+                        </div>
+                      </button>
                       <Button
                         variant="ghost"
                         size="icon"
@@ -375,8 +486,8 @@ function BibliotecaContent() {
                       <span className="text-[10px] text-muted-foreground">
                         {doc.tamano_bytes ? formatFileSize(doc.tamano_bytes) : ""}
                       </span>
-                      <Button variant="outline" size="sm" className="rounded-lg h-8 gap-1.5" onClick={() => handleAbrir(doc)}>
-                        <Download className="h-3.5 w-3.5" /> Abrir
+                      <Button variant="outline" size="sm" className="rounded-lg h-8 gap-1.5" onClick={() => abrirPreview(doc)}>
+                        <Eye className="h-3.5 w-3.5" /> Ver
                       </Button>
                     </div>
                   </CardContent>
@@ -443,33 +554,64 @@ function BibliotecaContent() {
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div className="space-y-2">
                 <Label className="text-xs">Categoría</Label>
-                <Select value={form.categoriaId} onValueChange={v => setForm(p => ({ ...p, categoriaId: v, moduloId: "", etiquetaId: "" }))}>
+                <Select value={form.categoriaId} onValueChange={v => v === CREAR_NUEVO ? iniciarCreacion('categoria') : setForm(p => ({ ...p, categoriaId: v, moduloId: "", etiquetaId: "" }))}>
                   <SelectTrigger className="rounded-xl"><SelectValue placeholder="—" /></SelectTrigger>
                   <SelectContent>
                     {categorias.map(c => <SelectItem key={c.id} value={c.id.toString()}>{c.nombre}</SelectItem>)}
+                    <SelectSeparator />
+                    <SelectItem value={CREAR_NUEVO} className="text-primary font-medium focus:bg-primary/10">
+                      <div className="flex items-center gap-2"><PlusCircle className="w-4 h-4" />Crear nueva...</div>
+                    </SelectItem>
                   </SelectContent>
                 </Select>
               </div>
               <div className="space-y-2">
                 <Label className="text-xs">Módulo</Label>
-                <Select value={form.moduloId} onValueChange={v => setForm(p => ({ ...p, moduloId: v, etiquetaId: "" }))} disabled={!form.categoriaId}>
+                <Select value={form.moduloId} onValueChange={v => v === CREAR_NUEVO ? iniciarCreacion('modulo') : setForm(p => ({ ...p, moduloId: v, etiquetaId: "" }))} disabled={!form.categoriaId}>
                   <SelectTrigger className="rounded-xl"><SelectValue placeholder="—" /></SelectTrigger>
                   <SelectContent>
                     {modulos.map(m => <SelectItem key={m.id} value={m.id.toString()}>{m.nombre}</SelectItem>)}
+                    <SelectSeparator />
+                    <SelectItem value={CREAR_NUEVO} className="text-primary font-medium focus:bg-primary/10">
+                      <div className="flex items-center gap-2"><PlusCircle className="w-4 h-4" />Crear nuevo...</div>
+                    </SelectItem>
                   </SelectContent>
                 </Select>
               </div>
               <div className="space-y-2">
                 <Label className="text-xs">Etiqueta</Label>
-                <Select value={form.etiquetaId} onValueChange={v => setForm(p => ({ ...p, etiquetaId: v === "NONE" ? "" : v }))} disabled={!form.moduloId}>
+                <Select value={form.etiquetaId} onValueChange={v => v === CREAR_NUEVO ? iniciarCreacion('etiqueta') : setForm(p => ({ ...p, etiquetaId: v === "NONE" ? "" : v }))} disabled={!form.moduloId}>
                   <SelectTrigger className="rounded-xl"><SelectValue placeholder={etiquetasForm.length === 0 ? "—" : "Etiqueta"} /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="NONE">Sin etiqueta</SelectItem>
                     {etiquetasForm.map(et => <SelectItem key={et.id} value={et.id.toString()}>{et.nombre}</SelectItem>)}
+                    <SelectSeparator />
+                    <SelectItem value={CREAR_NUEVO} className="text-primary font-medium focus:bg-primary/10">
+                      <div className="flex items-center gap-2"><PlusCircle className="w-4 h-4" />Crear nueva...</div>
+                    </SelectItem>
                   </SelectContent>
                 </Select>
               </div>
             </div>
+
+            {creando && (
+              <div className="rounded-xl border border-primary/20 bg-primary/5 p-3 space-y-2">
+                <Label className="text-xs font-semibold text-primary">
+                  {creando === 'categoria' && "Nueva categoría"}
+                  {creando === 'modulo' && "Nuevo módulo"}
+                  {creando === 'etiqueta' && "Nueva etiqueta"}
+                </Label>
+                {creando === 'modulo' && !form.categoriaId ? (
+                  <p className="text-xs text-muted-foreground">Primero elige una categoría.</p>
+                ) : creando === 'etiqueta' && !form.moduloId ? (
+                  <p className="text-xs text-muted-foreground">Primero elige un módulo.</p>
+                ) : filaCrear(
+                  creando === 'categoria' ? "Ej: Logística" :
+                  creando === 'modulo' ? "Ej: Devoluciones" :
+                  "Ej: Mercado Libre"
+                )}
+              </div>
+            )}
 
             <div className="flex justify-end gap-2 pt-2">
               <Button type="button" variant="ghost" onClick={() => { setShowUpload(false); resetForm(); }} className="rounded-xl">
@@ -500,6 +642,50 @@ function BibliotecaContent() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Vista previa del documento */}
+      <Dialog open={!!previewDoc} onOpenChange={(o) => { if (!o) { setPreviewDoc(null); setPreviewUrl(""); } }}>
+        <DialogContent className="max-w-4xl rounded-2xl p-0 overflow-hidden gap-0">
+          <DialogHeader className="p-4 pb-3 border-b">
+            <DialogTitle className="flex items-center gap-2 pr-8 text-base">
+              {previewDoc && React.createElement(iconoPorArchivo(previewDoc.nombre_archivo), { className: "w-4 h-4 text-primary shrink-0" })}
+              <span className="truncate">{previewDoc?.titulo}</span>
+            </DialogTitle>
+            <DialogDescription className="truncate">{previewDoc?.nombre_archivo}</DialogDescription>
+          </DialogHeader>
+
+          <div className="bg-muted/40 min-h-[50vh] max-h-[70vh] overflow-auto flex items-center justify-center">
+            {previewLoading ? (
+              <Loader2 className="w-8 h-8 animate-spin text-primary" />
+            ) : !previewUrl || !previewDoc ? (
+              <p className="text-sm text-muted-foreground p-8">No se pudo cargar la vista previa.</p>
+            ) : getDocumentPreviewKind(previewDoc.nombre_archivo) === 'image' ? (
+              <img src={previewUrl} alt={previewDoc.titulo} className="max-w-full max-h-[70vh] object-contain" />
+            ) : getDocumentPreviewKind(previewDoc.nombre_archivo) === 'pdf' ? (
+              <iframe src={previewUrl} title={previewDoc.titulo} className="w-full h-[70vh] bg-white" />
+            ) : (
+              <div className="text-center p-10 text-muted-foreground">
+                {React.createElement(iconoPorArchivo(previewDoc.nombre_archivo), { className: "w-14 h-14 mx-auto mb-3 opacity-30" })}
+                <p className="font-medium">Este tipo de archivo no se puede previsualizar aquí.</p>
+                <p className="text-sm mt-1">Ábrelo o descárgalo para verlo.</p>
+              </div>
+            )}
+          </div>
+
+          <div className="flex items-center justify-end gap-2 p-3 border-t">
+            {previewDoc && (
+              <>
+                <Button variant="outline" className="rounded-xl gap-1.5" onClick={() => previewUrl && window.open(previewUrl, '_blank', 'noopener,noreferrer')} disabled={!previewUrl}>
+                  <ExternalLink className="h-4 w-4" /> Abrir en pestaña
+                </Button>
+                <Button className="rounded-xl gap-1.5" onClick={() => descargar(previewDoc)}>
+                  <Download className="h-4 w-4" /> Descargar
+                </Button>
+              </>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
