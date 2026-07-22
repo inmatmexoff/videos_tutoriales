@@ -1,5 +1,6 @@
 import { supabasePROD } from "@/lib/supabase";
 import { DOCUMENTOS_BUCKET, DOCUMENT_SIGNED_URL_TTL_SECONDS } from "@/lib/documentos";
+import { sanitizeFileName } from "@/lib/storage";
 
 // La biblioteca guarda PDFs/docs/cualquier archivo que NO sea video. Reusa el
 // bucket privado "documentos-tutoriales" con el prefijo "biblioteca/" (ver
@@ -88,7 +89,7 @@ export async function getBibliotecaSignedUrl(path: string, download = false): Pr
 // Sube un archivo al bucket bajo el prefijo de la biblioteca y devuelve su path.
 export async function subirArchivoBiblioteca(file: File): Promise<string> {
   const timestamp = Date.now();
-  const nombreLimpio = file.name.replace(/\s/g, '_');
+  const nombreLimpio = sanitizeFileName(file.name);
   const path = `${BIBLIOTECA_PREFIX}/${timestamp}_${nombreLimpio}`;
   const { error } = await supabasePROD.storage.from(DOCUMENTOS_BUCKET).upload(path, file);
   if (error) throw error;

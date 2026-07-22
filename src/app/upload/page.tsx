@@ -56,6 +56,7 @@ import { Etiqueta, fetchEtiquetasDeModulo } from "@/lib/etiquetas";
 import { DocumentoRef, MAX_DOCUMENT_SIZE_MB, formatFileSize } from "@/lib/documentos";
 import { EnlaceSistema, ensureUrlProtocol } from "@/lib/enlaces";
 import { compressImage } from "@/lib/image";
+import { sanitizeKeySegment, sanitizeFileName } from "@/lib/storage";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { AdminGuard } from "@/components/admin-guard";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -356,13 +357,13 @@ function UploadContent() {
       const cat = categories.find(c => c.id.toString() === formData.categoriaId);
       const mod = modules.find(m => m.id.toString() === formData.moduloId);
       
-      const cleanCat = cat?.nombre.replace(/\s/g, '_') || 'General';
-      const cleanMod = mod?.nombre.replace(/\s/g, '_') || 'Sin_Modulo';
+      const cleanCat = sanitizeKeySegment(cat?.nombre || 'General', 'General');
+      const cleanMod = sanitizeKeySegment(mod?.nombre || 'Sin_Modulo', 'Sin_Modulo');
       const timestamp = Date.now();
 
       let videoUrl = "";
       if (videoFile && !uploadLater) {
-        const videoFileName = `${timestamp}_${videoFile.name.replace(/\s/g, '_')}`;
+        const videoFileName = `${timestamp}_${sanitizeFileName(videoFile.name)}`;
         const videoPath = `${cleanCat}/${cleanMod}/videos/${videoFileName}`;
         const { error: videoError } = await supabasePROD.storage.from('videos-tutoriales').upload(videoPath, videoFile);
         if (videoError) throw videoError;
@@ -372,7 +373,7 @@ function UploadContent() {
 
       let miniaturaUrl = `https://picsum.photos/seed/${Math.random()}/600/400`;
       if (imageFile) {
-        const imgFileName = `${timestamp}_${imageFile.name.replace(/\s/g, '_')}`;
+        const imgFileName = `${timestamp}_${sanitizeFileName(imageFile.name)}`;
         const imgPath = `${cleanCat}/${cleanMod}/thumbnails/${imgFileName}`;
         const { error: imgError } = await supabasePROD.storage.from('videos-tutoriales').upload(imgPath, imageFile);
         if (imgError) throw imgError;
@@ -382,7 +383,7 @@ function UploadContent() {
 
       const documentos: DocumentoRef[] = [];
       for (const doc of documentFiles) {
-        const docFileName = `${timestamp}_${doc.name.replace(/\s/g, '_')}`;
+        const docFileName = `${timestamp}_${sanitizeFileName(doc.name)}`;
         const docPath = `${cleanCat}/${cleanMod}/documentos/${docFileName}`;
         const { error: docError } = await supabasePROD.storage.from('documentos-tutoriales').upload(docPath, doc);
         if (docError) throw docError;

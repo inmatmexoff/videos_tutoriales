@@ -35,6 +35,7 @@ import { formatFileSize, MAX_DOCUMENT_SIZE_MB, DocumentoRef } from "@/lib/docume
 import { normalizeChecklist } from "@/lib/checklist-pdf";
 import { EnlaceSistema, ensureUrlProtocol, normalizeEnlaces } from "@/lib/enlaces";
 import { compressImage } from "@/lib/image";
+import { sanitizeFileName } from "@/lib/storage";
 import { AdminGuard } from "@/components/admin-guard";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -237,7 +238,7 @@ function EditContent() {
       const timestamp = Date.now();
 
       if (imageFile) {
-        const imgFileName = `${timestamp}_${imageFile.name.replace(/\s/g, '_')}`;
+        const imgFileName = `${timestamp}_${sanitizeFileName(imageFile.name)}`;
         const imgPath = `editados/thumbnails/${imgFileName}`;
         const { error: imgError } = await supabasePROD.storage.from('videos-tutoriales').upload(imgPath, imageFile);
         if (imgError) throw imgError;
@@ -246,7 +247,7 @@ function EditContent() {
       }
 
       if (videoFile) {
-        const videoFileName = `${timestamp}_${videoFile.name.replace(/\s/g, '_')}`;
+        const videoFileName = `${timestamp}_${sanitizeFileName(videoFile.name)}`;
         const videoPath = `editados/videos/${videoFileName}`;
         const { error: vidError } = await supabasePROD.storage.from('videos-tutoriales').upload(videoPath, videoFile);
         if (vidError) throw vidError;
@@ -256,7 +257,7 @@ function EditContent() {
 
       const newDocuments: DocumentoRef[] = [];
       for (const doc of newDocumentFiles) {
-        const docFileName = `${timestamp}_${doc.name.replace(/\s/g, '_')}`;
+        const docFileName = `${timestamp}_${sanitizeFileName(doc.name)}`;
         const docPath = `editados/documentos/${docFileName}`;
         const { error: docError } = await supabasePROD.storage.from('documentos-tutoriales').upload(docPath, doc);
         if (docError) throw docError;
