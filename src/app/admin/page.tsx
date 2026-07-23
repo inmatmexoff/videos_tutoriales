@@ -59,10 +59,39 @@ function AdminContent() {
   const [fetching, setFetching] = useState(true);
   const [categories, setCategories] = useState<any[]>([]);
   const [showModuleDialog, setShowModuleDialog] = useState(false);
-  
+
+  // Pestaña activa. Se puede preseleccionar desde la URL (?tab=modulos), que es como
+  // llega el "Crear nuevo..." de los selects de Subir Video.
+  const [activeTab, setActiveTab] = useState("categorias");
+
   // Estados para creación
   const [catData, setCatData] = useState({ nombre: "", descripcion: "" });
   const [modData, setModData] = useState({ categoriaId: "", nombre: "", descripcion: "" });
+
+  // Lee la URL al montar: ?tab= abre la pestaña y ?categoriaId= precarga la categoría
+  // padre, para no obligar a reelegir la que ya venía seleccionada en Subir Video.
+  useEffect(() => {
+    const TABS_VALIDAS = ["categorias", "modulos", "subcategorias", "examenes"];
+    const params = new URLSearchParams(window.location.search);
+
+    const tab = params.get("tab");
+    if (tab && TABS_VALIDAS.includes(tab)) setActiveTab(tab);
+
+    const categoriaId = params.get("categoriaId");
+    if (categoriaId) setModData(prev => ({ ...prev, categoriaId }));
+
+    // Para la pestaña de Etiquetas se arrastran categoría Y módulo (una etiqueta depende
+    // de ambos). Al fijar categoriaId, el efecto de modulesForSubcat carga los módulos y
+    // el moduloId ya casa con su opción.
+    const moduloId = params.get("moduloId");
+    if (categoriaId || moduloId) {
+      setSubcatData(prev => ({
+        ...prev,
+        ...(categoriaId ? { categoriaId } : {}),
+        ...(moduloId ? { moduloId } : {}),
+      }));
+    }
+  }, []);
   const [subcatData, setSubcatData] = useState({ categoriaId: "", moduloId: "", nombre: "", descripcion: "" });
 
   // Estados para edición de categoría
@@ -419,7 +448,8 @@ function AdminContent() {
 
       // La etiqueta es global: si "Mercado Libre" ya existe se reusa y solo se
       // vincula a este módulo, en vez de crear un duplicado por módulo.
-      await vincularEtiquetaAModulo(subcatData.nombre, parseInt(subcatData.moduloId), user.id);
+      const autorNombre = user.user_metadata?.full_name || user.user_metadata?.name || user.email;
+      await vincularEtiquetaAModulo(subcatData.nombre, parseInt(subcatData.moduloId), user.id, autorNombre);
 
       toast({ title: "Etiqueta lista", description: `"${subcatData.nombre.trim()}" quedó disponible en este módulo.` });
       setSubcatData(prev => ({ ...prev, nombre: "", descripcion: "" }));
@@ -458,7 +488,7 @@ function AdminContent() {
           </Button>
         </div>
 
-        <Tabs defaultValue="categorias" className="w-full">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
           <TabsList className="grid w-full grid-cols-4 rounded-xl h-12">
             <TabsTrigger value="categorias" className="rounded-lg">Categorías</TabsTrigger>
             <TabsTrigger value="modulos" className="rounded-lg">Módulos</TabsTrigger>

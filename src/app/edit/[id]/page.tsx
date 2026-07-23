@@ -31,7 +31,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { supabasePROD } from "@/lib/supabase";
 import { Etiqueta, fetchEtiquetasDeModulo } from "@/lib/etiquetas";
-import { formatFileSize, MAX_DOCUMENT_SIZE_MB, DocumentoRef } from "@/lib/documentos";
+import { formatFileSize, MAX_DOCUMENT_SIZE_MB, DocumentoRef, DOCUMENT_ACCEPT, isAllowedDocument } from "@/lib/documentos";
 import { normalizeChecklist } from "@/lib/checklist-pdf";
 import { EnlaceSistema, ensureUrlProtocol, normalizeEnlaces } from "@/lib/enlaces";
 import { compressImage } from "@/lib/image";
@@ -178,6 +178,13 @@ function EditContent() {
     const files = Array.from(e.target.files || []);
     if (files.length === 0) return;
 
+    const noPermitido = files.find(f => !isAllowedDocument(f));
+    if (noPermitido) {
+      toast({ variant: "destructive", title: "Tipo de archivo no permitido", description: `"${noPermitido.name}" no se puede adjuntar. Se aceptan PDF, Word, Excel, PowerPoint, texto e imágenes.` });
+      e.target.value = "";
+      return;
+    }
+
     const tooLarge = files.find(f => f.size / (1024 * 1024) > MAX_DOCUMENT_SIZE_MB);
     if (tooLarge) {
       toast({ variant: "destructive", title: "Documento demasiado grande", description: `"${tooLarge.name}" supera el límite de ${MAX_DOCUMENT_SIZE_MB}MB.` });
@@ -265,22 +272,43 @@ function EditContent() {
       }
       const combinedDocuments = [...existingDocuments, ...newDocuments];
 
+      const ahora = new Date().toISOString();
+      const autorNombre = user.user_metadata?.full_name || user.user_metadata?.name || user.email;
+
+      const cambios: Record<string, unknown> = {
+        titulo: formData.titulo,
+        descripcion: formData.descripcion,
+        miniatura_url: currentMiniaturaUrl,
+        url_video: currentVideoUrl,
+        documentos: combinedDocuments.length > 0 ? combinedDocuments : null,
+        checklist: checklistItems.length > 0 ? checklistItems : null,
+        enlaces_sistemas: enlaces.length > 0 ? enlaces : null,
+        duracion_segundos: parseInt(formData.duracion) || 0,
+        fecha_actualizacion: ahora,
+        actualizado_por: user.id,
+        actualizado_por_nombre: autorNombre,
+        es_espacio: currentVideoUrl === "" && !videoFile, // Sigue siendo espacio si aún no tiene video
+        tipo_contenido: formData.tipoContenido,
+        etiqueta_id: formData.etiquetaId ? parseInt(formData.etiquetaId) : null
+      };
+
+      // Las fechas por archivo solo se tocan si de verdad se reemplazó ese
+      // archivo. `fecha_actualizacion` sube con cualquier edición (un cambio de
+      // título incluido), así que por sí sola no dice si el video cambió.
+      if (videoFile) {
+        cambios.video_actualizado_en = ahora;
+        cambios.video_actualizado_por = user.id;
+        cambios.video_actualizado_por_nombre = autorNombre;
+      }
+      if (imageFile) {
+        cambios.portada_actualizada_en = ahora;
+        cambios.portada_actualizada_por = user.id;
+        cambios.portada_actualizada_por_nombre = autorNombre;
+      }
+
       const { error } = await supabasePROD
         .from('tutoriales')
-        .update({
-          titulo: formData.titulo,
-          descripcion: formData.descripcion,
-          miniatura_url: currentMiniaturaUrl,
-          url_video: currentVideoUrl,
-          documentos: combinedDocuments.length > 0 ? combinedDocuments : null,
-          checklist: checklistItems.length > 0 ? checklistItems : null,
-          enlaces_sistemas: enlaces.length > 0 ? enlaces : null,
-          duracion_segundos: parseInt(formData.duracion) || 0,
-          fecha_actualizacion: new Date().toISOString(),
-          es_espacio: currentVideoUrl === "" && !videoFile, // Sigue siendo espacio si aún no tiene video
-          tipo_contenido: formData.tipoContenido,
-          etiqueta_id: formData.etiquetaId ? parseInt(formData.etiquetaId) : null
-        })
+        .update(cambios)
         .eq('id', id);
 
       if (error) throw error;
@@ -474,13 +502,13 @@ function EditContent() {
                   <input
                     type="file"
                     multiple
-                    accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt"
+                    accept={DOCUMENT_ACCEPT}
                     className="absolute inset-0 opacity-0 cursor-pointer"
                     onChange={handleDocumentsChange}
                   />
                   <div className="text-center px-2 z-10 pointer-events-none">
                     <Paperclip className="mx-auto mb-2 text-muted-foreground" />
-                    <p className="text-xs font-medium">Adjuntar documentos (PDF, Word, Excel, etc.)</p>
+                    <p className="text-xs font-medium">Adjuntar documentos (PDF, Word, Excel, imágenes, etc.)</p>
                   </div>
                 </div>
 

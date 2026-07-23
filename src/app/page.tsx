@@ -27,6 +27,7 @@ import {
   AlertCircle,
   UploadCloud,
   FileVideo,
+  ImageIcon,
   Monitor,
   Settings,
   Filter,
@@ -44,7 +45,7 @@ import {
   ExternalLink,
   Library
 } from "lucide-react";
-import { formatDistanceToNow } from 'date-fns';
+import { formatDistanceToNow, format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -75,6 +76,15 @@ import { AdminGuard } from "@/components/admin-guard";
 import { DocumentoRef, getDocumentPreviewKind, DOCUMENTOS_BUCKET, DOCUMENT_SIGNED_URL_TTL_SECONDS } from "@/lib/documentos";
 import { downloadChecklistPdf, normalizeChecklist } from "@/lib/checklist-pdf";
 import { EnlaceSistema, normalizeEnlaces } from "@/lib/enlaces";
+import {
+  ProgresoVideo,
+  fetchProgresoUsuario,
+  guardarProgreso,
+  porcentajeVisto,
+  UMBRAL_COMPLETADO,
+  INTERVALO_GUARDADO_SEGUNDOS,
+  MINIMO_PARA_REANUDAR_SEGUNDOS,
+} from "@/lib/progreso";
 import { cn } from "@/lib/utils";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
@@ -91,6 +101,12 @@ interface Tutorial {
   es_espacio: boolean;
   tipo_contenido: 'operacion' | 'software';
   orden: number;
+  fecha_creacion: string;
+  subido_por_nombre: string | null;
+  video_actualizado_en: string | null;
+  video_actualizado_por_nombre: string | null;
+  portada_actualizada_en: string | null;
+  portada_actualizada_por_nombre: string | null;
   etiqueta: {
     nombre: string;
   } | null;
@@ -153,6 +169,9 @@ function TutorialsContent() {
   const [activeCommentTab, setActiveCommentTab] = useState<TipoComentario>("comentario");
   const [postingComment, setPostingComment] = useState(false);
   const [deleteTargetId, setDeleteTargetId] = useState<number | null>(null);
+  const [progreso, setProgreso] = useState<Map<number, ProgresoVideo>>(new Map());
+  // Segundo del último guardado, para no escribir en cada tick del onTimeUpdate.
+  const ultimoGuardadoRef = useRef(0);
   const [deletePassword, setDeletePassword] = useState("");
   const [deletePasswordError, setDeletePasswordError] = useState("");
 
@@ -193,6 +212,9 @@ function TutorialsContent() {
         .from('tutoriales')
         .select(`
           id, titulo, descripcion, url_video, miniatura_url, documentos, checklist, enlaces_sistemas, duracion_segundos, es_espacio, tipo_contenido, orden,
+          fecha_creacion, subido_por_nombre,
+          video_actualizado_en, video_actualizado_por_nombre,
+          portada_actualizada_en, portada_actualizada_por_nombre,
           etiqueta:etiquetas (nombre),
           modulo:modulos_tutoriales (
             id,
@@ -212,6 +234,21 @@ function TutorialsContent() {
       setLoading(false);
     }
   };
+
+  // Se carga aparte de fetchTutorials porque depende del usuario, que llega en
+  // su propio efecto: si se pidiera dentro del fetch, la primera carga saldría
+  // siempre sin progreso.
+  useEffect(() => {
+    async function cargarProgreso() {
+      if (!userId || tutorials.length === 0) return;
+      try {
+        setProgreso(await fetchProgresoUsuario(userId, tutorials.map(t => t.id)));
+      } catch (error: any) {
+        console.error("No se pudo cargar el progreso:", error.message);
+      }
+    }
+    cargarProgreso();
+  }, [userId, tutorials]);
 
   useEffect(() => {
     async function fetchUserData() {
@@ -329,6 +366,8 @@ function TutorialsContent() {
     const secs = seconds % 60;
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
+
+  const formatFecha = (fecha: string) => format(new Date(fecha), "d 'de' MMMM 'de' yyyy", { locale: es });
 
   const fetchComments = async (tutorialId: number) => {
     try {
@@ -449,20 +488,49 @@ function TutorialsContent() {
     }
   };
 
-  const handleVideoEnded = async (tutorialId: number) => {
+  const guardarAvance = async (tutorialId: number, segundos: number, completado: boolean) => {
     if (!userId) return;
+    setProgreso(prev => {
+      const copia = new Map(prev);
+      const anterior = copia.get(tutorialId);
+      copia.set(tutorialId, {
+        segundos_vistos: segundos,
+        completado: completado || anterior?.completado || false,
+      });
+      return copia;
+    });
     try {
-      const { error } = await supabasePROD
-        .from('visualizaciones_tutoriales')
-        .upsert(
-          { tutorial_id: tutorialId, usuario_id: userId, fecha_visualizacion: new Date().toISOString() },
-          { onConflict: 'tutorial_id,usuario_id' }
-        );
-      if (error) throw error;
+      await guardarProgreso(tutorialId, userId, segundos, completado);
     } catch (error: any) {
       // No molestamos al usuario con un toast por esto; solo lo dejamos en consola.
       console.error("No se pudo registrar la visualización:", error.message);
     }
+  };
+
+  // Reanuda donde se quedó. Si ya lo terminó, empieza de cero: quien reabre un
+  // video visto lo hace para repasarlo, no para ver el último segundo.
+  const handleVideoLoaded = (tutorialId: number, video: HTMLVideoElement) => {
+    ultimoGuardadoRef.current = 0;
+    const guardado = progreso.get(tutorialId);
+    if (!guardado || guardado.completado) return;
+    if (guardado.segundos_vistos < MINIMO_PARA_REANUDAR_SEGUNDOS) return;
+    if (video.duration && guardado.segundos_vistos >= video.duration - 5) return;
+    video.currentTime = guardado.segundos_vistos;
+  };
+
+  const handleVideoTimeUpdate = (tutorialId: number, video: HTMLVideoElement) => {
+    const actual = video.currentTime;
+    // El onTimeUpdate dispara ~4 veces por segundo; sin esto sería un upsert
+    // cada 250ms. El Math.abs cubre además el salto al rebobinar.
+    if (Math.abs(actual - ultimoGuardadoRef.current) < INTERVALO_GUARDADO_SEGUNDOS) return;
+    ultimoGuardadoRef.current = actual;
+
+    const completado = !!video.duration && actual >= video.duration * UMBRAL_COMPLETADO;
+    guardarAvance(tutorialId, actual, completado);
+  };
+
+  const handleVideoEnded = (tutorialId: number, video: HTMLVideoElement) => {
+    guardarAvance(tutorialId, video.duration || 0, true);
   };
 
   const relatedTutorials = useMemo(() => {
@@ -519,6 +587,16 @@ function TutorialsContent() {
         <div className="absolute bottom-2 right-2 bg-black/70 text-white text-[10px] px-2 py-1 rounded-md backdrop-blur-sm flex items-center gap-1">
           <Clock className="w-3 h-3" /> {!tutorial.es_espacio ? formatDuration(tutorial.duracion_segundos) : "Pte. Video"}
         </div>
+
+        {/* Barra de progreso al pie de la miniatura, como YouTube. */}
+        {!tutorial.es_espacio && porcentajeVisto(progreso.get(tutorial.id), tutorial.duracion_segundos) > 0 && (
+          <div className="absolute bottom-0 left-0 right-0 h-1 bg-black/40">
+            <div
+              className="h-full bg-red-600 transition-[width] duration-300"
+              style={{ width: `${porcentajeVisto(progreso.get(tutorial.id), tutorial.duracion_segundos)}%` }}
+            />
+          </div>
+        )}
       </div>
       <CardHeader className="p-5">
         <div className="flex justify-between items-start gap-2">
@@ -607,7 +685,9 @@ function TutorialsContent() {
                   controls
                   autoPlay
                   playsInline
-                  onEnded={() => handleVideoEnded(viewingTutorial.id)}
+                  onLoadedMetadata={(e) => handleVideoLoaded(viewingTutorial.id, e.currentTarget)}
+                  onTimeUpdate={(e) => handleVideoTimeUpdate(viewingTutorial.id, e.currentTarget)}
+                  onEnded={(e) => handleVideoEnded(viewingTutorial.id, e.currentTarget)}
                 />
               </div>
             ) : (
@@ -639,6 +719,28 @@ function TutorialsContent() {
                 </Badge>
               </div>
               <p className="text-muted-foreground text-base md:text-lg leading-relaxed">{viewingTutorial.descripcion}</p>
+
+              <div className="flex flex-col gap-1 pt-1 text-xs text-muted-foreground border-t pt-4">
+                <span className="flex items-center gap-1.5">
+                  <UploadCloud className="w-3.5 h-3.5 shrink-0" />
+                  Subido {formatFecha(viewingTutorial.fecha_creacion)}
+                  {viewingTutorial.subido_por_nombre && ` por ${viewingTutorial.subido_por_nombre}`}
+                </span>
+                {viewingTutorial.video_actualizado_en && (
+                  <span className="flex items-center gap-1.5">
+                    <FileVideo className="w-3.5 h-3.5 shrink-0" />
+                    Video actualizado {formatFecha(viewingTutorial.video_actualizado_en)}
+                    {viewingTutorial.video_actualizado_por_nombre && ` por ${viewingTutorial.video_actualizado_por_nombre}`}
+                  </span>
+                )}
+                {viewingTutorial.portada_actualizada_en && (
+                  <span className="flex items-center gap-1.5">
+                    <ImageIcon className="w-3.5 h-3.5 shrink-0" />
+                    Portada actualizada {formatFecha(viewingTutorial.portada_actualizada_en)}
+                    {viewingTutorial.portada_actualizada_por_nombre && ` por ${viewingTutorial.portada_actualizada_por_nombre}`}
+                  </span>
+                )}
+              </div>
 
               {viewingTutorial.documentos && viewingTutorial.documentos.length > 0 && (
                 <div className="space-y-2 pt-2">

@@ -53,11 +53,19 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { supabasePROD } from "@/lib/supabase";
 import { Etiqueta, fetchEtiquetasDeModulo } from "@/lib/etiquetas";
-import { DocumentoRef, MAX_DOCUMENT_SIZE_MB, formatFileSize } from "@/lib/documentos";
+import { DocumentoRef, MAX_DOCUMENT_SIZE_MB, formatFileSize, DOCUMENT_ACCEPT, isAllowedDocument } from "@/lib/documentos";
 import { EnlaceSistema, ensureUrlProtocol } from "@/lib/enlaces";
 import { compressImage } from "@/lib/image";
 import { sanitizeKeySegment, sanitizeFileName } from "@/lib/storage";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { AdminGuard } from "@/components/admin-guard";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
@@ -215,6 +223,9 @@ function UploadContent() {
         setFileError(`El video es demasiado grande (${fileSizeMB.toFixed(1)}MB). El límite permitido es de ${MAX_FILE_SIZE_MB}MB.`);
         setVideoFile(null);
         setVideoPreview(null);
+        // Limpiar el input: si no, reelegir el mismo archivo no dispara
+        // onChange y el modal de error no vuelve a salir.
+        e.target.value = "";
         return;
       }
       setVideoFile(file);
@@ -246,6 +257,13 @@ function UploadContent() {
   const handleDocumentsChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
     if (files.length === 0) return;
+
+    const noPermitido = files.find(f => !isAllowedDocument(f));
+    if (noPermitido) {
+      setFileError(`"${noPermitido.name}" no es un tipo de archivo permitido. Se aceptan PDF, Word, Excel, PowerPoint, texto e imágenes.`);
+      e.target.value = "";
+      return;
+    }
 
     const tooLarge = files.filter(f => f.size / (1024 * 1024) > MAX_DOCUMENT_SIZE_MB);
     if (tooLarge.length > 0) {
@@ -417,7 +435,11 @@ function UploadContent() {
         orden: nextOrden,
         es_espacio: uploadLater,
         tipo_contenido: formData.tipoContenido,
-        creado_por: user.id
+        creado_por: user.id,
+        // El uuid de `creado_por` no sirve para mostrar el autor: la app no
+        // puede leer auth.users desde el navegador. Se guarda el nombre ya
+        // resuelto, igual que en los comentarios.
+        subido_por_nombre: user.user_metadata?.full_name || user.user_metadata?.name || user.email
       }]).select().single();
 
       if (dbError) throw dbError;
@@ -516,14 +538,6 @@ function UploadContent() {
           
           <form onSubmit={handleSubmit}>
             <CardContent className="space-y-6">
-              {fileError && (
-                <Alert variant="destructive" className="rounded-2xl">
-                  <AlertTriangle className="h-4 w-4" />
-                  <AlertTitle>Error de archivo</AlertTitle>
-                  <AlertDescription>{fileError}</AlertDescription>
-                </Alert>
-              )}
-
               <div className="flex items-center justify-between p-4 bg-primary/5 rounded-2xl border border-primary/10">
                 <div className="space-y-1">
                   <Label className="flex items-center gap-2 text-primary font-bold">
@@ -552,7 +566,7 @@ function UploadContent() {
                 </div>
                 <div className="space-y-2">
                   <Label>Módulo</Label>
-                  <Select value={formData.moduloId} onValueChange={(v) => v === "ADD_NEW_MODULE" ? router.push('/admin') : setFormData(p => ({ ...p, moduloId: v, etiquetaId: "" }))} disabled={!formData.categoriaId}>
+                  <Select value={formData.moduloId} onValueChange={(v) => v === "ADD_NEW_MODULE" ? router.push(`/admin?tab=modulos&categoriaId=${encodeURIComponent(formData.categoriaId)}`) : setFormData(p => ({ ...p, moduloId: v, etiquetaId: "" }))} disabled={!formData.categoriaId}>
                     <SelectTrigger className="rounded-xl">
                       <SelectValue placeholder={loadingModules ? "Cargando..." : "Selecciona módulo"} />
                     </SelectTrigger>
@@ -583,7 +597,7 @@ function UploadContent() {
                 </div>
                 <div className="space-y-2">
                   <Label>Etiqueta (Opcional)</Label>
-                  <Select value={formData.etiquetaId} onValueChange={(v) => v === "ADD_NEW_SUBCATEGORY" ? router.push('/admin') : setFormData(p => ({ ...p, etiquetaId: v === "NONE" ? "" : v }))} disabled={!formData.moduloId}>
+                  <Select value={formData.etiquetaId} onValueChange={(v) => v === "ADD_NEW_SUBCATEGORY" ? router.push(`/admin?tab=subcategorias&categoriaId=${encodeURIComponent(formData.categoriaId)}&moduloId=${encodeURIComponent(formData.moduloId)}`) : setFormData(p => ({ ...p, etiquetaId: v === "NONE" ? "" : v }))} disabled={!formData.moduloId}>
                     <SelectTrigger className="rounded-xl">
                       <SelectValue placeholder={loadingEtiquetas ? "Cargando..." : etiquetas.length === 0 ? "Sin etiquetas en este módulo" : "Selecciona etiqueta"} />
                     </SelectTrigger>
@@ -681,13 +695,13 @@ function UploadContent() {
                   <input
                     type="file"
                     multiple
-                    accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt"
+                    accept={DOCUMENT_ACCEPT}
                     className="absolute inset-0 opacity-0 cursor-pointer"
                     onChange={handleDocumentsChange}
                   />
                   <div className="text-center px-2 z-10 pointer-events-none">
                     <Paperclip className="mx-auto mb-2 text-muted-foreground" />
-                    <p className="text-xs font-medium">Adjuntar documentos (PDF, Word, Excel, etc.)</p>
+                    <p className="text-xs font-medium">Adjuntar documentos (PDF, Word, Excel, imágenes, etc.)</p>
                   </div>
                 </div>
 
@@ -856,6 +870,23 @@ function UploadContent() {
           </form>
         </Card>
       </div>
+
+      <AlertDialog open={!!fileError} onOpenChange={(o) => !o && setFileError(null)}>
+        <AlertDialogContent className="rounded-2xl">
+          <AlertDialogHeader>
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-destructive/10 rounded-lg">
+                <AlertTriangle className="w-5 h-5 text-destructive" />
+              </div>
+              <AlertDialogTitle>Error de archivo</AlertDialogTitle>
+            </div>
+            <AlertDialogDescription>{fileError}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogAction className="rounded-xl">Entendido</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

@@ -44,7 +44,12 @@ export async function fetchTodasLasEtiquetas(soloActivas = true): Promise<Etique
 export async function vincularEtiquetaAModulo(
   nombre: string,
   moduloId: number,
-  creadoPor: string
+  creadoPor: string,
+  // Nombre ya resuelto de quien la crea. El uuid `creadoPor` no sirve para
+  // mostrarlo: la app no puede leer auth.users desde el navegador. Se guarda
+  // aparte, igual que en tutoriales y comentarios. Solo se usa si la etiqueta
+  // es nueva; si ya existía en el catálogo se conserva su autor original.
+  creadoPorNombre?: string | null
 ): Promise<Etiqueta> {
   const nombreLimpio = nombre.trim();
   if (!nombreLimpio) throw new Error("El nombre de la etiqueta no puede estar vacío.");
@@ -64,7 +69,7 @@ export async function vincularEtiquetaAModulo(
   if (!etiqueta) {
     const { data: creada, error: createErr } = await supabasePROD
       .from('etiquetas')
-      .insert([{ nombre: nombreLimpio, creado_por: creadoPor }])
+      .insert([{ nombre: nombreLimpio, creado_por: creadoPor, creado_por_nombre: creadoPorNombre ?? null }])
       .select('id, nombre')
       .single();
     if (createErr) throw createErr;

@@ -131,7 +131,7 @@ function ExamenContent() {
           if (tutorialesError) throw tutorialesError;
 
           const tutorialIds = (tutorialesModulo || []).map(t => t.id);
-          let visualizaciones: { tutorial_id: number; fecha_visualizacion: string }[] = [];
+          let visualizaciones: { tutorial_id: number; fecha_visualizacion: string | null }[] = [];
           if (tutorialIds.length > 0) {
             const { data: visData, error: visError } = await supabasePROD
               .from('visualizaciones_tutoriales')
@@ -144,7 +144,12 @@ function ExamenContent() {
 
           const pending = (tutorialesModulo || []).filter(t => {
             const vista = visualizaciones.find(v => v.tutorial_id === t.id);
-            return !vista || new Date(vista.fecha_visualizacion) <= new Date(lastAttempt.fecha_intento);
+            // `fecha_visualizacion` en null = hay progreso guardado pero el
+            // usuario nunca terminó el video, así que sigue contando como
+            // pendiente. Antes la fila solo existía al terminarlo y no podía
+            // ser null; ahora se crea en cuanto le da play.
+            if (!vista || !vista.fecha_visualizacion) return true;
+            return new Date(vista.fecha_visualizacion) <= new Date(lastAttempt.fecha_intento);
           });
           setPendingVideos(pending.map(t => t.titulo));
         }

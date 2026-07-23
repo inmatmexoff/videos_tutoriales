@@ -31,3 +31,45 @@ export function getDocumentPreviewKind(nombre: string): DocumentPreviewKind {
   if (OFFICE_EXTENSIONS.includes(ext)) return 'office';
   return 'other';
 }
+
+// Extensiones que se aceptan como documento adjunto.
+// HEIC/HEIF están aquí solo por si iOS entrega el original: al incluir
+// "image/*" en el accept, Safari normalmente convierte las fotos de la
+// Fototeca a JPEG antes de entregarlas.
+export const DOCUMENT_EXTENSIONS = [
+  'pdf', 'txt', 'csv',
+  ...OFFICE_EXTENSIONS,
+  ...IMAGE_EXTENSIONS,
+  'heic', 'heif',
+];
+
+// Valor del atributo `accept` del <input type="file">.
+//
+// Lleva MIME types ADEMÁS de las extensiones a propósito: iPadOS filtra el
+// selector nativo traduciendo cada extensión a un UTI, y con archivos que
+// llegan de apps de terceros (Drive, OneDrive) esa traducción falla y el
+// archivo sale atenuado, sin poder tocarlo y sin ninguna explicación. Con el
+// MIME type declarado, el selector los reconoce. "image/*" es lo que permite
+// adjuntar desde la Fototeca del iPad.
+export const DOCUMENT_ACCEPT = [
+  'application/pdf',
+  'image/*',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'application/vnd.ms-powerpoint',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  'text/plain',
+  'text/csv',
+  ...DOCUMENT_EXTENSIONS.map(ext => `.${ext}`),
+].join(',');
+
+// El `accept` es solo un filtro del selector: en iPad y en escritorio se puede
+// esquivar (arrastrando, o eligiendo "todos los archivos"). Esta validación es
+// la que sí manda, y permite explicar el motivo en pantalla.
+export function isAllowedDocument(file: File): boolean {
+  if (file.type.startsWith('image/')) return true;
+  const ext = file.name.split('.').pop()?.toLowerCase() || '';
+  return DOCUMENT_EXTENSIONS.includes(ext);
+}
